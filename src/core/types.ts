@@ -22,6 +22,7 @@ export interface AudioConfig {
   recordSystemAudio: boolean;
   micDeviceId?: string;
   noiseCancellation?: NoiseSuppressionMode;
+  onAudioLevel?: (levelDb: number, gateOpen: boolean) => void;
 }
 
 export interface TemplateConfig {

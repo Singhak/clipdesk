@@ -126,9 +126,19 @@ export class LayoutAgent {
 
   private static readonly BACKDROP_SHORT_SIDE = 320;
   private static readonly BACKDROP_REFRESH_MS = 100;
-  private static backdropAt = -Infinity;
-  private static backdrop: HTMLCanvasElement | OffscreenCanvas | null = null;
+  private static readonly MAX_CACHED_LAYERS = 16;
   private static layers = new Map<string, HTMLCanvasElement | OffscreenCanvas>();
+  private static backdropCache = new WeakMap<
+    HTMLCanvasElement | OffscreenCanvas,
+    { canvas: HTMLCanvasElement | OffscreenCanvas; refreshAt: number }
+  >();
+  private static fallbackBackdrop: { canvas: HTMLCanvasElement | OffscreenCanvas; refreshAt: number } | null = null;
+
+  public static clearCaches(): void {
+    LayoutAgent.layers.clear();
+    LayoutAgent.backdropCache = new WeakMap();
+    LayoutAgent.fallbackBackdrop = null;
+  }
 
   private static makeCanvas(width: number, height: number): HTMLCanvasElement | OffscreenCanvas | null {
     if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(width, height);
@@ -139,21 +149,75 @@ export class LayoutAgent {
     return c;
   }
 
-  private static backdropCanvas(width: number, height: number): HTMLCanvasElement | OffscreenCanvas | null {
-    LayoutAgent.backdrop ??= LayoutAgent.makeCanvas(width, height);
-    const c = LayoutAgent.backdrop;
-    if (c && (c.width !== width || c.height !== height)) {
-      c.width = width;
-      c.height = height;
-      LayoutAgent.backdropAt = -Infinity;
+  private static getBackdropEntry(
+    targetCanvas: HTMLCanvasElement | OffscreenCanvas | undefined,
+    width: number,
+    height: number
+  ): { canvas: HTMLCanvasElement | OffscreenCanvas; refreshAt: number } | null {
+    if (targetCanvas && typeof targetCanvas === 'object') {
+      let entry = LayoutAgent.backdropCache.get(targetCanvas);
+      if (!entry) {
+        const made = LayoutAgent.makeCanvas(width, height);
+        if (!made) return null;
+        entry = { canvas: made, refreshAt: -Infinity };
+        LayoutAgent.backdropCache.set(targetCanvas, entry);
+      } else if (entry.canvas.width !== width || entry.canvas.height !== height) {
+        entry.canvas.width = width;
+        entry.canvas.height = height;
+        entry.refreshAt = -Infinity;
+      }
+      return entry;
     }
-    return c;
+
+    if (!LayoutAgent.fallbackBackdrop) {
+      const made = LayoutAgent.makeCanvas(width, height);
+      if (!made) return null;
+      LayoutAgent.fallbackBackdrop = { canvas: made, refreshAt: -Infinity };
+    } else if (
+      LayoutAgent.fallbackBackdrop.canvas.width !== width ||
+      LayoutAgent.fallbackBackdrop.canvas.height !== height
+    ) {
+      LayoutAgent.fallbackBackdrop.canvas.width = width;
+      LayoutAgent.fallbackBackdrop.canvas.height = height;
+      LayoutAgent.fallbackBackdrop.refreshAt = -Infinity;
+    }
+    return LayoutAgent.fallbackBackdrop;
+  }
+
+  /**
+   * Calculates centered foreground video card dimensions preserving native source aspect ratio.
+   * Fits within max available width and height inside the 9:16 vertical canvas.
+   */
+  public static calculateCardBounds(
+    canvasWidth: number,
+    canvasHeight: number,
+    sourceWidth: number,
+    sourceHeight: number,
+    margin = 16
+  ): { targetX: number; targetY: number; targetW: number; targetH: number } {
+    const maxWidth = Math.max(10, canvasWidth - margin * 2);
+    const maxHeight = Math.max(10, canvasHeight - margin * 2);
+    const aspect = sourceWidth > 0 && sourceHeight > 0 ? sourceWidth / sourceHeight : 16 / 9;
+
+    let targetW = maxWidth;
+    let targetH = Math.round(targetW / aspect);
+
+    if (targetH > maxHeight) {
+      targetH = maxHeight;
+      targetW = Math.round(targetH * aspect);
+    }
+
+    const targetX = Math.round((canvasWidth - targetW) / 2);
+    const targetY = Math.round((canvasHeight - targetH) / 2);
+
+    return { targetX, targetY, targetW, targetH };
   }
 
   /**
    * Paints the parts of a layout that never change (backgrounds, drop shadows) once, at the
    * output resolution, and reuses them every frame. Shadow blurs are among the most expensive
    * canvas operations, and redrawing them 30 times a second costs integrated GPUs whole frames.
+   * Employs an LRU cache with MAX_CACHED_LAYERS to avoid unbounded VRAM growth.
    */
   private static drawCachedLayer(
     ctx: CanvasRenderingContext2D,
@@ -169,7 +233,16 @@ export class LayoutAgent {
     const ph = Math.round(height * sy);
     const fullKey = `${key}:${pw}x${ph}`;
     let layer = LayoutAgent.layers.get(fullKey);
-    if (!layer) {
+    if (layer) {
+      LayoutAgent.layers.delete(fullKey);
+      LayoutAgent.layers.set(fullKey, layer);
+    } else {
+      if (LayoutAgent.layers.size >= LayoutAgent.MAX_CACHED_LAYERS) {
+        const oldestKey = LayoutAgent.layers.keys().next().value;
+        if (oldestKey !== undefined) {
+          LayoutAgent.layers.delete(oldestKey);
+        }
+      }
       const made = LayoutAgent.makeCanvas(pw, ph);
       if (!made) {
         paint(ctx);
@@ -200,13 +273,15 @@ export class LayoutAgent {
     // stays above ~256x256, because Chrome keeps smaller canvases on the CPU and would then read
     // the whole screen frame back from the GPU on every draw.
     const k = Math.max(1, Math.min(canvasWidth, canvasHeight) / LayoutAgent.BACKDROP_SHORT_SIDE);
-    const small = LayoutAgent.backdropCanvas(Math.ceil(canvasWidth / k), Math.ceil(canvasHeight / k));
-    if (small) {
+    const bw = Math.ceil(canvasWidth / k);
+    const bh = Math.ceil(canvasHeight / k);
+    const entry = LayoutAgent.getBackdropEntry(ctx.canvas, bw, bh);
+    if (entry) {
       // A blurred backdrop barely changes between frames; re-blur it 10 times a second
       const now = performance.now();
-      if (now - LayoutAgent.backdropAt >= LayoutAgent.BACKDROP_REFRESH_MS || now < LayoutAgent.backdropAt) {
-        LayoutAgent.backdropAt = now;
-        const sctx = small.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+      if (now - entry.refreshAt >= LayoutAgent.BACKDROP_REFRESH_MS || now < entry.refreshAt) {
+        entry.refreshAt = now;
+        const sctx = entry.canvas.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
         sctx.filter = `blur(${28 / k}px) brightness(0.65)`;
         sctx.drawImage(source, bgX / k, bgY / k, bgW / k, bgH / k);
         sctx.filter = 'none';
@@ -214,7 +289,7 @@ export class LayoutAgent {
       ctx.save();
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = 'high';
-      ctx.drawImage(small, 0, 0, canvasWidth, canvasHeight);
+      ctx.drawImage(entry.canvas, 0, 0, canvasWidth, canvasHeight);
       ctx.restore();
     } else {
       ctx.save();
@@ -223,16 +298,20 @@ export class LayoutAgent {
       ctx.restore();
     }
 
-    // 2. Crisp foreground video card, centered
+    // 2. Crisp foreground video card, centered preserving native aspect ratio
     const margin = 16;
-    const targetW = canvasWidth - margin * 2;
-    const targetH = (targetW * 9) / 16; // 16:9 ratio card
-    const targetX = margin;
-    const targetY = (canvasHeight - targetH) / 2;
+    const { targetX, targetY, targetW, targetH } = LayoutAgent.calculateCardBounds(
+      canvasWidth,
+      canvasHeight,
+      sourceWidth,
+      sourceHeight,
+      margin
+    );
     const radius = 16;
 
-    // Dark overlay gradient and the card's drop shadow never change: cache them
-    LayoutAgent.drawCachedLayer(ctx, 'blur-overlay', canvasWidth, canvasHeight, (g) => {
+    // Dark overlay gradient and the card's drop shadow never change: cache them with card dimensions in key
+    const overlayKey = `blur-overlay:${targetW}x${targetH}`;
+    LayoutAgent.drawCachedLayer(ctx, overlayKey, canvasWidth, canvasHeight, (g) => {
       const grad = g.createLinearGradient(0, 0, 0, canvasHeight);
       grad.addColorStop(0, 'rgba(10, 11, 16, 0.45)');
       grad.addColorStop(0.5, 'rgba(10, 11, 16, 0.2)');
@@ -265,16 +344,20 @@ export class LayoutAgent {
   private static renderGradientMesh(o: RenderContext): void {
     const { ctx, canvasWidth, canvasHeight, source, sourceWidth, sourceHeight } = o;
 
-    // Centered crisp video card
+    // Centered crisp video card preserving native aspect ratio
     const margin = 20;
-    const targetW = canvasWidth - margin * 2;
-    const targetH = (targetW * 9) / 16;
-    const targetX = margin;
-    const targetY = (canvasHeight - targetH) / 2;
+    const { targetX, targetY, targetW, targetH } = LayoutAgent.calculateCardBounds(
+      canvasWidth,
+      canvasHeight,
+      sourceWidth,
+      sourceHeight,
+      margin
+    );
     const radius = 18;
 
-    // Background gradient and the card's glow never change: cache them
-    LayoutAgent.drawCachedLayer(ctx, 'gradient-mesh', canvasWidth, canvasHeight, (g) => {
+    // Background gradient and the card's glow never change: cache them with card dimensions in key
+    const meshKey = `gradient-mesh:${targetW}x${targetH}`;
+    LayoutAgent.drawCachedLayer(ctx, meshKey, canvasWidth, canvasHeight, (g) => {
       const grad = g.createLinearGradient(0, 0, canvasWidth, canvasHeight);
       grad.addColorStop(0, '#0f172a');
       grad.addColorStop(0.5, '#1e1b4b');
@@ -323,12 +406,15 @@ export class LayoutAgent {
     ctx.fillText(creatorHandle || '@clipdesk_creator', canvasWidth / 2, 95);
     ctx.restore();
 
-    // Centered video
+    // Centered video preserving native aspect ratio
     const margin = 16;
-    const targetW = canvasWidth - margin * 2;
-    const targetH = (targetW * 9) / 16;
-    const targetX = margin;
-    const targetY = (canvasHeight - targetH) / 2;
+    const { targetX, targetY, targetW, targetH } = LayoutAgent.calculateCardBounds(
+      canvasWidth,
+      canvasHeight,
+      sourceWidth,
+      sourceHeight,
+      margin
+    );
 
     ctx.save();
     ctx.shadowColor = 'rgba(0,0,0,0.7)';
@@ -372,11 +458,14 @@ export class LayoutAgent {
         screenX = (halo.x - camera.cropX) * scaleX;
         screenY = (halo.y - camera.cropY) * scaleY;
       } else {
-        const margin = 16;
-        const targetW = canvasWidth - margin * 2;
-        const targetH = (targetW * 9) / 16;
-        const targetX = margin;
-        const targetY = (canvasHeight - targetH) / 2;
+        const margin = mode === 'gradient_mesh' ? 20 : 16;
+        const { targetX, targetY, targetW, targetH } = LayoutAgent.calculateCardBounds(
+          canvasWidth,
+          canvasHeight,
+          sourceWidth,
+          sourceHeight,
+          margin
+        );
         screenX = targetX + (halo.x / sourceWidth) * targetW;
         screenY = targetY + (halo.y / sourceHeight) * targetH;
       }
@@ -409,11 +498,14 @@ export class LayoutAgent {
       cx = (mousePos.x - camera.cropX) * scaleX;
       cy = (mousePos.y - camera.cropY) * scaleY;
     } else {
-      const margin = 16;
-      const targetW = canvasWidth - margin * 2;
-      const targetH = (targetW * 9) / 16;
-      const targetX = margin;
-      const targetY = (canvasHeight - targetH) / 2;
+      const margin = mode === 'gradient_mesh' ? 20 : 16;
+      const { targetX, targetY, targetW, targetH } = LayoutAgent.calculateCardBounds(
+        canvasWidth,
+        canvasHeight,
+        sourceWidth,
+        sourceHeight,
+        margin
+      );
       cx = targetX + (mousePos.x / sourceWidth) * targetW;
       cy = targetY + (mousePos.y / sourceHeight) * targetH;
     }

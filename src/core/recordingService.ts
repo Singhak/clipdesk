@@ -1,10 +1,12 @@
-import { AudioConfig } from './types';
+import { AudioConfig, NoiseSuppressionMode } from './types';
 import { MixedAudio, mixAudioTracks } from './audioMixer';
+import { VoiceProcessor } from './voiceProcessor';
 
 export class RecordingService {
   private displayStream: MediaStream | null = null;
   private micStream: MediaStream | null = null;
   private mixedAudio: MixedAudio | null = null;
+  private onAudioLevel?: (levelDb: number, gateOpen: boolean) => void;
   private isSimulation = false;
   private simulationInterval: number | null = null;
 
@@ -100,12 +102,27 @@ export class RecordingService {
 
   private async setupAudioMixing(warnings: string[], audioConfig?: AudioConfig): Promise<void> {
     // Mic first: if the two sources can't be mixed, the voice-over is the one to keep
+    const levelCb = audioConfig?.onAudioLevel ?? this.onAudioLevel;
     this.mixedAudio = await mixAudioTracks({
       micTrack: this.micStream?.getAudioTracks()[0] ?? null,
       systemTrack: this.displayStream?.getAudioTracks()[0] ?? null,
-      noiseCancellation: audioConfig?.noiseCancellation ?? 'studio'
+      noiseCancellation: audioConfig?.noiseCancellation ?? 'studio',
+      onAudioLevel: levelCb
     });
     if (this.mixedAudio.warning) warnings.push(this.mixedAudio.warning);
+  }
+
+  public setOnAudioLevel(cb?: (levelDb: number, gateOpen: boolean) => void): void {
+    this.onAudioLevel = cb;
+    this.mixedAudio?.voiceProcessor?.setOnLevelChange(cb);
+  }
+
+  public setNoiseCancellation(mode: NoiseSuppressionMode): void {
+    this.mixedAudio?.setNoiseMode?.(mode);
+  }
+
+  public getVoiceProcessor(): VoiceProcessor | null {
+    return this.mixedAudio?.voiceProcessor ?? null;
   }
 
   public getMixedAudioStream(): MediaStream | null {

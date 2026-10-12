@@ -1,6 +1,27 @@
 import { ExportSettings } from './types';
 
 export class ExportEngine {
+  /** Escapes a file path or command argument for safe execution in shell command strings */
+  private static escapeShellArg(arg: string): string {
+    return `"${arg.replace(/[\\"]/g, '\\$&')}"`;
+  }
+
+  /** Escapes special characters for FFmpeg drawtext filter string literal */
+  private static escapeDrawtext(text: string): string {
+    return text
+      .replace(/\\/g, '\\\\')
+      .replace(/'/g, "\\'")
+      .replace(/:/g, '\\:');
+  }
+
+  /** Sanitizes bitrate parameter, enforcing alphanumeric video bitrate syntax (e.g., 14M, 6000k) */
+  private static sanitizeBitrate(bitrate?: string): string {
+    if (bitrate && /^[0-9]+[kKmMgG]?$/.test(bitrate)) {
+      return bitrate;
+    }
+    return '14M';
+  }
+
   /**
    * Builds the optimized FFmpeg filtergraph command for the desktop pipeline
    */
@@ -10,17 +31,23 @@ export class ExportEngine {
     audioFile?: string;
     layout: string;
     watermark: boolean;
+    watermarkText?: string;
     bitrate?: string;
   }): string {
-    const { inputFile, outputFile, audioFile, layout, watermark, bitrate = '14M' } = options;
+    const { inputFile, outputFile, audioFile, layout, watermark, bitrate } = options;
+    const safeInput = ExportEngine.escapeShellArg(inputFile);
+    const safeOutput = ExportEngine.escapeShellArg(outputFile);
+    const safeBitrate = ExportEngine.sanitizeBitrate(bitrate);
+    const rawWmText = options.watermarkText || 'Made with ClipDesk';
+    const safeWmText = ExportEngine.escapeDrawtext(rawWmText);
 
     // The recorded file is already the composed 1080x1920 canvas (layout, camera and zoom
     // baked in), so re-cropping would damage it. Only re-encode, plus the optional watermark.
     if (layout === 'recorded_canvas') {
       const wm = watermark
-        ? ` -vf "drawtext=text='Made with ClipDesk':x=w-tw-30:y=h-th-40:fontsize=24:fontcolor=white@0.8:box=1:boxcolor=black@0.5:boxborderw=10"`
+        ? ` -vf "drawtext=text='${safeWmText}':x=w-tw-30:y=h-th-40:fontsize=24:fontcolor=white@0.8:box=1:boxcolor=black@0.5:boxborderw=10"`
         : '';
-      return `ffmpeg -y -i "${inputFile}"${wm} -c:v libx264 -preset fast -b:v ${bitrate} -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart "${outputFile}"`;
+      return `ffmpeg -y -i ${safeInput}${wm} -c:v libx264 -preset fast -b:v ${safeBitrate} -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart ${safeOutput}`;
     }
 
     let filter = '';
@@ -35,13 +62,13 @@ export class ExportEngine {
     if (watermark) {
       filter = filter.replace(
         '[v]"',
-        `[v0]; [v0]drawtext=text='Made with ClipDesk':x=w-tw-30:y=h-th-40:fontsize=24:fontcolor=white@0.8:box=1:boxcolor=black@0.5:boxborderw=10[v]"`
+        `[v0]; [v0]drawtext=text='${safeWmText}':x=w-tw-30:y=h-th-40:fontsize=24:fontcolor=white@0.8:box=1:boxcolor=black@0.5:boxborderw=10[v]"`
       );
     }
 
-    const audioParam = audioFile ? `-i "${audioFile}" -map 1:a -c:a aac -b:a 192k` : '-c:a copy';
+    const audioParam = audioFile ? `-i ${ExportEngine.escapeShellArg(audioFile)} -map 1:a -c:a aac -b:a 192k` : '-c:a copy';
 
-    return `ffmpeg -y -i "${inputFile}" ${audioFile ? audioParam : ''} -filter_complex ${filter} -map "[v]" -c:v libx264 -preset fast -b:v ${bitrate} -pix_fmt yuv420p "${outputFile}"`;
+    return `ffmpeg -y -i ${safeInput} ${audioFile ? audioParam : ''} -filter_complex ${filter} -map "[v]" -c:v libx264 -preset fast -b:v ${safeBitrate} -pix_fmt yuv420p ${safeOutput}`;
   }
 
   /**
@@ -106,12 +133,31 @@ export class ExportEngine {
         stopFrames();
         if (!stopPromise) {
           stopPromise = new Promise<Blob>((resolve) => {
+            const handleStop = () => {
+              resolve(makeBlob());
+            };
+
             if (recorder.state === 'inactive') {
               resolve(makeBlob());
               return;
             }
-            recorder.onstop = () => resolve(makeBlob());
-            recorder.stop();
+
+            recorder.onstop = handleStop;
+
+            // Flush in-flight data so stops <250ms don't produce corrupt 0-byte blobs
+            try {
+              if (recorder.state === 'recording' || recorder.state === 'paused') {
+                recorder.requestData();
+              }
+            } catch {
+              // Ignore if already transitioning
+            }
+
+            try {
+              recorder.stop();
+            } catch {
+              resolve(makeBlob());
+            }
           });
         }
         return stopPromise;
@@ -210,18 +256,28 @@ export class ExportEngine {
       const video = document.createElement('video');
       const url = URL.createObjectURL(blob);
       let settled = false;
+      let timerId: number | null = null;
+
       const finish = (value: number | null) => {
         if (settled) return;
         settled = true;
+        if (timerId !== null) {
+          clearTimeout(timerId);
+          timerId = null;
+        }
+        video.onloadedmetadata = null;
+        video.onerror = null;
         URL.revokeObjectURL(url);
         video.removeAttribute('src');
+        video.load();
         resolve(value);
       };
+
       video.muted = true;
       video.preload = 'metadata';
       video.onloadedmetadata = () => finish(Number.isFinite(video.duration) ? video.duration : null);
       video.onerror = () => finish(null);
-      setTimeout(() => finish(null), timeoutMs);
+      timerId = window.setTimeout(() => finish(null), timeoutMs);
       video.src = url;
     });
   }

@@ -284,9 +284,10 @@ export const App: React.FC = () => {
             onUpdateZoomIntensity={(intensity) =>
               setSmartFeatures((prev) => ({ ...prev, zoomIntensity: intensity }))
             }
-            onUpdateNoiseCancellation={(mode) =>
-              setAudioConfig((prev) => ({ ...prev, noiseCancellation: mode }))
-            }
+            onUpdateNoiseCancellation={(mode) => {
+              setAudioConfig((prev) => ({ ...prev, noiseCancellation: mode }));
+              recordingService.setNoiseCancellation(mode);
+            }}
           />
         )}
 

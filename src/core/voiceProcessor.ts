@@ -94,27 +94,67 @@ export interface VoiceProcessorOptions {
   onLevelChange?: (levelDb: number, gateOpen: boolean) => void;
 }
 
+/**
+ * Creates a background timer powered by a Web Worker.
+ * Immune to browser tab throttling when user is recording other windows/apps.
+ */
+function createBackgroundTimer(intervalMs: number, onTick: () => void): () => void {
+  try {
+    const url = URL.createObjectURL(
+      new Blob(
+        [
+          `var ready=true;onmessage=function(){ready=true};setInterval(function(){if(ready){ready=false;postMessage(0)}},${Math.round(intervalMs)})`
+        ],
+        { type: 'text/javascript' }
+      )
+    );
+    const worker = new Worker(url);
+    worker.onmessage = () => {
+      try {
+        onTick();
+      } finally {
+        worker.postMessage(0);
+      }
+    };
+    return () => {
+      worker.terminate();
+      URL.revokeObjectURL(url);
+    };
+  } catch {
+    const id = window.setInterval(onTick, intervalMs);
+    return () => window.clearInterval(id);
+  }
+}
+
 export class VoiceProcessor {
   private ctx: AudioContext;
   private mode: NoiseSuppressionMode;
   private onLevelChange?: (levelDb: number, gateOpen: boolean) => void;
 
-  private sourceNode: MediaStreamAudioSourceNode;
+  // Strongly retained to prevent Chromium GC (crbug.com/123281, crbug.com/933677)
+  private inputStream: MediaStream;
   private inputTrack: MediaStreamTrack;
-  private highpassNode: BiquadFilterNode | null = null;
-  private notchNode: BiquadFilterNode | null = null;
-  private presenceNode: BiquadFilterNode | null = null;
-  private highshelfNode: BiquadFilterNode | null = null;
-  private gateGainNode: GainNode | null = null;
-  private compressorNode: DynamicsCompressorNode | null = null;
-  private analyserNode: AnalyserNode | null = null;
+
+  private sourceNode: MediaStreamAudioSourceNode;
+  private highpassNode: BiquadFilterNode;
+  private notchNode: BiquadFilterNode;
+  private presenceNode: BiquadFilterNode;
+  private highshelfNode: BiquadFilterNode;
+  private gateGainNode: GainNode;
+  private compressorNode: DynamicsCompressorNode;
+  private analyserNode: AnalyserNode;
 
   public readonly outputNode: AudioNode;
 
   private isRunning = true;
-  private animFrameId: number | null = null;
+  private stopTimer: (() => void) | null = null;
   private gateHoldUntil = 0;
   private isGateOpen = false;
+  private smoothedDb = -100;
+
+  private onTrackEnded = () => {
+    this.close();
+  };
 
   constructor(ctx: AudioContext, track: MediaStreamTrack, options?: VoiceProcessorOptions) {
     this.ctx = ctx;
@@ -122,86 +162,127 @@ export class VoiceProcessor {
     this.mode = options?.mode ?? 'studio';
     this.onLevelChange = options?.onLevelChange;
 
-    this.sourceNode = ctx.createMediaStreamSource(new MediaStream([track]));
+    // Retain MediaStream strongly as an instance property to prevent Chromium GC audio cutoff
+    this.inputStream = new MediaStream([track]);
+    this.sourceNode = ctx.createMediaStreamSource(this.inputStream);
 
-    if (this.mode === 'off') {
-      this.outputNode = this.sourceNode;
-      return;
-    }
+    // Track lifecycle listeners
+    this.inputTrack.addEventListener('ended', this.onTrackEnded);
 
-    const profile = NOISE_PROFILES[this.mode];
-
-    // 1. Highpass filter: Eliminates traffic rumble, AC wind / sub-bass rumble, 50/60Hz mains hum
+    // 1. Highpass filter: Rumble & hum reduction
     this.highpassNode = ctx.createBiquadFilter();
     this.highpassNode.type = 'highpass';
-    this.highpassNode.frequency.setValueAtTime(profile.highpassCutoff, ctx.currentTime);
-    this.highpassNode.Q.setValueAtTime(0.707, ctx.currentTime);
 
-    let lastNode: AudioNode = this.sourceNode;
-    lastNode.connect(this.highpassNode);
-    lastNode = this.highpassNode;
+    // 2. Peaking notch filter: Dampens fan whir and drone resonance
+    this.notchNode = ctx.createBiquadFilter();
+    this.notchNode.type = 'peaking';
 
-    // 2. Notch/peaking filter to dampen fan whir / drone resonance
-    if (profile.notchFreq && profile.notchGain) {
-      this.notchNode = ctx.createBiquadFilter();
-      this.notchNode.type = 'peaking';
-      this.notchNode.frequency.setValueAtTime(profile.notchFreq, ctx.currentTime);
-      this.notchNode.Q.setValueAtTime(profile.notchQ ?? 1.5, ctx.currentTime);
-      this.notchNode.gain.setValueAtTime(profile.notchGain, ctx.currentTime);
-      lastNode.connect(this.notchNode);
-      lastNode = this.notchNode;
-    }
+    // 3. Peaking presence filter: Boosts vocal clarity and speech intelligibility
+    this.presenceNode = ctx.createBiquadFilter();
+    this.presenceNode.type = 'peaking';
 
-    // 3. Peaking presence filter: Boosts speech intelligibility & vocal clarity
-    if (profile.presenceFreq && profile.presenceGain) {
-      this.presenceNode = ctx.createBiquadFilter();
-      this.presenceNode.type = 'peaking';
-      this.presenceNode.frequency.setValueAtTime(profile.presenceFreq, ctx.currentTime);
-      this.presenceNode.Q.setValueAtTime(1.2, ctx.currentTime);
-      this.presenceNode.gain.setValueAtTime(profile.presenceGain, ctx.currentTime);
-      lastNode.connect(this.presenceNode);
-      lastNode = this.presenceNode;
-    }
-
-    // 4. Highshelf filter: Cuts high-frequency fan bearing whine and air conditioning hiss
-    if (profile.highshelfFreq && profile.highshelfGain) {
-      this.highshelfNode = ctx.createBiquadFilter();
-      this.highshelfNode.type = 'highshelf';
-      this.highshelfNode.frequency.setValueAtTime(profile.highshelfFreq, ctx.currentTime);
-      this.highshelfNode.gain.setValueAtTime(profile.highshelfGain, ctx.currentTime);
-      lastNode.connect(this.highshelfNode);
-      lastNode = this.highshelfNode;
-    }
+    // 4. Highshelf filter: Cuts high-frequency fan bearing whine and hiss
+    this.highshelfNode = ctx.createBiquadFilter();
+    this.highshelfNode.type = 'highshelf';
 
     // 5. Dynamic Noise Gate GainNode
     this.gateGainNode = ctx.createGain();
-    this.gateGainNode.gain.setValueAtTime(profile.gateFloorGain, ctx.currentTime);
-    lastNode.connect(this.gateGainNode);
-    lastNode = this.gateGainNode;
 
-    // 6. Broadcast Dynamics Compressor: Smooths vocal peaks and brings quiet words forward
+    // 6. Broadcast Dynamics Compressor: Smooths vocal peaks and brings quiet speech forward
     this.compressorNode = ctx.createDynamicsCompressor();
-    this.compressorNode.threshold.setValueAtTime(profile.compressorThreshold, ctx.currentTime);
-    this.compressorNode.knee.setValueAtTime(10, ctx.currentTime);
-    this.compressorNode.ratio.setValueAtTime(profile.compressorRatio, ctx.currentTime);
-    this.compressorNode.attack.setValueAtTime(profile.gateAttackTime, ctx.currentTime);
-    this.compressorNode.release.setValueAtTime(0.22, ctx.currentTime);
-    lastNode.connect(this.compressorNode);
-    lastNode = this.compressorNode;
 
-    // Sidechain analyser to track vocal RMS and trigger the noise gate
+    // 7. Sidechain analyser: 2048 FFT to prevent pitch flutter and capture lowest vocal fundamental waves
     this.analyserNode = ctx.createAnalyser();
-    this.analyserNode.fftSize = 512;
-    this.analyserNode.smoothingTimeConstant = 0.2;
-    // Monitor pre-gate signal from highpass to detect speech accurately
-    this.highpassNode.connect(this.analyserNode);
+    this.analyserNode.fftSize = 2048;
 
-    this.outputNode = lastNode;
+    // Connect permanent audio graph:
+    // source -> highpass -> notch -> presence -> highshelf -> gateGain -> compressor (outputNode)
+    this.sourceNode.connect(this.highpassNode);
+    this.highpassNode.connect(this.notchNode);
+    this.notchNode.connect(this.presenceNode);
+    this.presenceNode.connect(this.highshelfNode);
+    this.highshelfNode.connect(this.gateGainNode);
+    this.gateGainNode.connect(this.compressorNode);
 
-    this.startGateLoop(profile);
+    // Sidechain analyser tapped AFTER notch & highshelf filters (pre-gate)
+    // Ensures fan drone and bearing whine are attenuated before reaching speech detection
+    this.highshelfNode.connect(this.analyserNode);
+
+    this.outputNode = this.compressorNode;
+
+    // Apply initial profile parameters
+    this.applyProfile(this.mode);
+
+    // Start background-safe analysis ticker (~25ms interval / 40Hz)
+    this.startGateLoop();
   }
 
-  private startGateLoop(profile: NoiseFilterProfile): void {
+  /**
+   * Dynamically applies DSP profile parameters in place without rebuilding the audio graph.
+   */
+  private applyProfile(mode: NoiseSuppressionMode): void {
+    if (!this.isRunning || this.ctx.state === 'closed') return;
+    const now = this.ctx.currentTime;
+
+    if (mode === 'off') {
+      // Neutral bypass parameters
+      this.highpassNode.frequency.setValueAtTime(10, now);
+      this.highpassNode.Q.setValueAtTime(0.707, now);
+      this.notchNode.gain.setValueAtTime(0, now);
+      this.presenceNode.gain.setValueAtTime(0, now);
+      this.highshelfNode.gain.setValueAtTime(0, now);
+
+      this.gateGainNode.gain.cancelScheduledValues(now);
+      this.gateGainNode.gain.setValueAtTime(1.0, now);
+      this.isGateOpen = true;
+
+      this.compressorNode.threshold.setValueAtTime(0, now);
+      this.compressorNode.ratio.setValueAtTime(1, now);
+      return;
+    }
+
+    const profile = NOISE_PROFILES[mode];
+
+    this.highpassNode.frequency.setValueAtTime(profile.highpassCutoff, now);
+    this.highpassNode.Q.setValueAtTime(0.707, now);
+
+    if (profile.notchFreq && profile.notchGain) {
+      this.notchNode.frequency.setValueAtTime(profile.notchFreq, now);
+      this.notchNode.Q.setValueAtTime(profile.notchQ ?? 1.5, now);
+      this.notchNode.gain.setValueAtTime(profile.notchGain, now);
+    } else {
+      this.notchNode.gain.setValueAtTime(0, now);
+    }
+
+    if (profile.presenceFreq && profile.presenceGain) {
+      this.presenceNode.frequency.setValueAtTime(profile.presenceFreq, now);
+      this.presenceNode.Q.setValueAtTime(1.2, now);
+      this.presenceNode.gain.setValueAtTime(profile.presenceGain, now);
+    } else {
+      this.presenceNode.gain.setValueAtTime(0, now);
+    }
+
+    if (profile.highshelfFreq && profile.highshelfGain) {
+      this.highshelfNode.frequency.setValueAtTime(profile.highshelfFreq, now);
+      this.highshelfNode.gain.setValueAtTime(profile.highshelfGain, now);
+    } else {
+      this.highshelfNode.gain.setValueAtTime(0, now);
+    }
+
+    this.compressorNode.threshold.setValueAtTime(profile.compressorThreshold, now);
+    this.compressorNode.knee.setValueAtTime(10, now);
+    this.compressorNode.ratio.setValueAtTime(profile.compressorRatio, now);
+    // Dynamics vocal compressor attack decoupled from gate attack
+    this.compressorNode.attack.setValueAtTime(0.015, now);
+    this.compressorNode.release.setValueAtTime(0.2, now);
+
+    // Initialize gate floor
+    this.gateGainNode.gain.cancelScheduledValues(now);
+    this.gateGainNode.gain.setValueAtTime(profile.gateFloorGain, now);
+    this.isGateOpen = false;
+  }
+
+  private startGateLoop(): void {
     const analyser = this.analyserNode;
     const gateGain = this.gateGainNode;
     if (!analyser || !gateGain) return;
@@ -219,43 +300,80 @@ export class VoiceProcessor {
         sum += val * val;
       }
       const rms = Math.sqrt(sum / buffer.length);
-      const db = 20 * Math.log10(Math.max(rms, 1e-5));
-      const now = performance.now();
+      const instantDb = 20 * Math.log10(Math.max(rms, 1e-5));
 
-      // Dynamic Gate state evaluation
-      if (db >= profile.gateThresholdDb) {
-        this.isGateOpen = true;
-        this.gateHoldUntil = now + profile.gateHoldMs;
-        // Smooth exponential attack to 1.0 (open)
-        gateGain.gain.setTargetAtTime(1.0, this.ctx.currentTime, profile.gateAttackTime);
+      // Software EMA smoothing to eliminate pitch flutter and stabilize VU readings
+      const alpha = instantDb > this.smoothedDb ? 0.45 : 0.18;
+      this.smoothedDb = this.smoothedDb === -100 ? instantDb : this.smoothedDb + alpha * (instantDb - this.smoothedDb);
+      const db = this.smoothedDb;
+
+      // Audio context timebase synchronization
+      const now = this.ctx.currentTime;
+      const profile = this.mode !== 'off' ? NOISE_PROFILES[this.mode] : null;
+
+      if (profile) {
+        if (db >= profile.gateThresholdDb) {
+          // Speech detected: hold gate open
+          this.gateHoldUntil = now + profile.gateHoldMs / 1000;
+          if (!this.isGateOpen) {
+            this.isGateOpen = true;
+            // Only fire automation on state transition to prevent timeline congestion
+            gateGain.gain.cancelScheduledValues(this.ctx.currentTime);
+            gateGain.gain.setTargetAtTime(1.0, this.ctx.currentTime, profile.gateAttackTime);
+          }
+        } else {
+          // Below threshold: release once hold duration expires
+          if (now >= this.gateHoldUntil && this.isGateOpen) {
+            this.isGateOpen = false;
+            gateGain.gain.cancelScheduledValues(this.ctx.currentTime);
+            gateGain.gain.setTargetAtTime(profile.gateFloorGain, this.ctx.currentTime, profile.gateReleaseTime);
+          }
+        }
       } else {
-        if (now >= this.gateHoldUntil) {
-          this.isGateOpen = false;
-          // Smooth exponential release to floor gain (silence background fan/traffic)
-          gateGain.gain.setTargetAtTime(profile.gateFloorGain, this.ctx.currentTime, profile.gateReleaseTime);
+        // Mode 'off': gate remains wide open at unity gain
+        if (!this.isGateOpen) {
+          this.isGateOpen = true;
+          gateGain.gain.cancelScheduledValues(this.ctx.currentTime);
+          gateGain.gain.setTargetAtTime(1.0, this.ctx.currentTime, 0.01);
         }
       }
 
+      // Metering callback is always invoked, including in mode 'off'
       this.onLevelChange?.(db, this.isGateOpen);
-
-      this.animFrameId = requestAnimationFrame(checkAudioLevel);
     };
 
-    this.animFrameId = requestAnimationFrame(checkAudioLevel);
+    // Use Web Worker ticker to ensure loop continues in background/minimized tabs
+    this.stopTimer = createBackgroundTimer(25, checkAudioLevel);
+  }
+
+  /**
+   * Live preset switching without disconnecting the audio pipeline
+   */
+  public setMode(mode: NoiseSuppressionMode): void {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    this.applyProfile(mode);
   }
 
   public getMode(): NoiseSuppressionMode {
     return this.mode;
   }
 
+  public setOnLevelChange(cb?: (levelDb: number, gateOpen: boolean) => void): void {
+    this.onLevelChange = cb;
+  }
+
   public close(): void {
     this.isRunning = false;
-    if (this.animFrameId !== null) {
-      cancelAnimationFrame(this.animFrameId);
-      this.animFrameId = null;
+    if (this.stopTimer) {
+      this.stopTimer();
+      this.stopTimer = null;
+    }
+    if (this.inputTrack) {
+      this.inputTrack.removeEventListener('ended', this.onTrackEnded);
     }
     try {
-      this.sourceNode.disconnect();
+      this.sourceNode?.disconnect();
       this.highpassNode?.disconnect();
       this.notchNode?.disconnect();
       this.presenceNode?.disconnect();
@@ -266,5 +384,15 @@ export class VoiceProcessor {
     } catch {
       // Ignore disconnect errors during teardown
     }
+    // Nullify all node and callback references to release memory
+    this.sourceNode = null!;
+    this.highpassNode = null!;
+    this.notchNode = null!;
+    this.presenceNode = null!;
+    this.highshelfNode = null!;
+    this.gateGainNode = null!;
+    this.compressorNode = null!;
+    this.analyserNode = null!;
+    this.onLevelChange = undefined;
   }
 }

@@ -4,6 +4,8 @@ export interface MixedAudio {
   stream: MediaStream | null;
   warning?: string;
   close: () => void;
+  voiceProcessor?: VoiceProcessor | null;
+  setNoiseMode?: (mode: NoiseSuppressionMode) => void;
 }
 
 export interface AudioMixOptions {
@@ -21,6 +23,8 @@ const noop = () => {};
  * Applies active VoiceProcessor DSP (High-Pass traffic/AC rumble filter, dynamic noise gate,
  * fan whine suppression, and broadcast vocal leveling) to the microphone track while keeping
  * system audio (music/game/app sounds) full and unaltered.
+ *
+ * Strongly retains all MediaStream instances to prevent Chromium GC audio dropouts (crbug.com/123281).
  */
 export async function mixAudioTracks(input: MediaStreamTrack[] | AudioMixOptions): Promise<MixedAudio> {
   let micTrack: MediaStreamTrack | null = null;
@@ -44,21 +48,20 @@ export async function mixAudioTracks(input: MediaStreamTrack[] | AudioMixOptions
 
   // If only system audio and no mic, pass directly
   if (!micTrack && systemTrack) {
-    return { stream: new MediaStream([systemTrack]), close: noop };
+    const sysStream = new MediaStream([systemTrack]);
+    return { stream: sysStream, close: noop };
   }
 
-  // If noise cancellation is explicitly off and only 1 track, passthrough is fine
-  if (noiseMode === 'off' && micTrack && !systemTrack) {
-    return { stream: new MediaStream([micTrack]), close: noop };
-  }
-
-  const fallback = (): MixedAudio => ({
-    stream: new MediaStream(micTrack ? [micTrack] : [systemTrack!]),
-    warning: systemTrack
-      ? 'Microphone and system audio could not be mixed in this browser, so only the microphone is recorded.'
-      : undefined,
-    close: noop
-  });
+  const fallback = (): MixedAudio => {
+    const fallbackStream = new MediaStream(micTrack ? [micTrack] : [systemTrack!]);
+    return {
+      stream: fallbackStream,
+      warning: systemTrack
+        ? 'Microphone and system audio could not be mixed in this browser, so only the microphone is recorded.'
+        : undefined,
+      close: noop
+    };
+  };
 
   let ctx: AudioContext;
   try {
@@ -75,28 +78,44 @@ export async function mixAudioTracks(input: MediaStreamTrack[] | AudioMixOptions
 
   const dest = ctx.createMediaStreamDestination();
   let voiceProc: VoiceProcessor | null = null;
+  const retainedStreams: MediaStream[] = [];
+  const retainedSources: AudioNode[] = [];
 
   if (micTrack) {
-    if (noiseMode !== 'off') {
-      voiceProc = new VoiceProcessor(ctx, micTrack, {
-        mode: noiseMode,
-        onLevelChange: onAudioLevel
-      });
-      voiceProc.outputNode.connect(dest);
-    } else {
-      ctx.createMediaStreamSource(new MediaStream([micTrack])).connect(dest);
-    }
+    voiceProc = new VoiceProcessor(ctx, micTrack, {
+      mode: noiseMode,
+      onLevelChange: onAudioLevel
+    });
+    voiceProc.outputNode.connect(dest);
   }
 
   if (systemTrack) {
-    // Desktop system audio connects directly to dest without vocal filtering or gating
-    ctx.createMediaStreamSource(new MediaStream([systemTrack])).connect(dest);
+    // Desktop system audio connects directly to dest without vocal filtering or gating.
+    // Retain MediaStream strongly in retainedStreams array to prevent Chromium GC.
+    const sysStream = new MediaStream([systemTrack]);
+    retainedStreams.push(sysStream);
+    const sysSource = ctx.createMediaStreamSource(sysStream);
+    retainedSources.push(sysSource);
+    sysSource.connect(dest);
   }
 
   return {
     stream: dest.stream,
+    voiceProcessor: voiceProc,
+    setNoiseMode: (mode: NoiseSuppressionMode) => {
+      voiceProc?.setMode(mode);
+    },
     close: () => {
       voiceProc?.close();
+      retainedSources.forEach((src) => {
+        try {
+          src.disconnect();
+        } catch {
+          // Ignore teardown disconnect errors
+        }
+      });
+      retainedSources.length = 0;
+      retainedStreams.length = 0;
       if (ctx.state !== 'closed') void ctx.close().catch(noop);
     }
   };

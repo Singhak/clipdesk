@@ -71,10 +71,11 @@ export const TEMPLATES: Record<TemplateId, TemplateConfig> = {
 
 export class TemplateManager {
   public static getAllTemplates(): TemplateConfig[] {
-    return Object.values(TEMPLATES);
+    return Object.values(TEMPLATES).map((t) => ({ ...t }));
   }
 
   public static getTemplate(id: TemplateId): TemplateConfig {
-    return TEMPLATES[id] || TEMPLATES.coding;
+    const tmpl = TEMPLATES[id] || TEMPLATES.coding;
+    return { ...tmpl };
   }
 }
