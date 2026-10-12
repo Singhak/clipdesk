@@ -320,7 +320,7 @@ export class LayoutAgent {
 
     ctx.font = '13px Outfit, sans-serif';
     ctx.fillStyle = '#94a3b8';
-    ctx.fillText(creatorHandle || '@reelscreen_creator', canvasWidth / 2, 95);
+    ctx.fillText(creatorHandle || '@clipdesk_creator', canvasWidth / 2, 95);
     ctx.restore();
 
     // Centered video
@@ -438,7 +438,7 @@ export class LayoutAgent {
 
   private static renderWatermark(o: RenderContext): void {
     const { ctx, canvasWidth, canvasHeight } = o;
-    const text = 'Made with ReelScreen';
+    const text = 'Made with ClipDesk';
 
     ctx.save();
     const padX = 12;

@@ -1,6 +1,6 @@
 import { LicenseInfo } from '../core/types';
 
-const STORAGE_KEY = 'reelscreen_license_v1';
+const STORAGE_KEY = 'clipdesk_license_v1';
 
 export class LicenseService {
   private static listeners: Array<(info: LicenseInfo) => void> = [];

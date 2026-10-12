@@ -18,7 +18,7 @@ export class ExportEngine {
     // baked in), so re-cropping would damage it. Only re-encode, plus the optional watermark.
     if (layout === 'recorded_canvas') {
       const wm = watermark
-        ? ` -vf "drawtext=text='Made with ReelScreen':x=w-tw-30:y=h-th-40:fontsize=24:fontcolor=white@0.8:box=1:boxcolor=black@0.5:boxborderw=10"`
+        ? ` -vf "drawtext=text='Made with ClipDesk':x=w-tw-30:y=h-th-40:fontsize=24:fontcolor=white@0.8:box=1:boxcolor=black@0.5:boxborderw=10"`
         : '';
       return `ffmpeg -y -i "${inputFile}"${wm} -c:v libx264 -preset fast -b:v ${bitrate} -pix_fmt yuv420p -c:a aac -b:a 192k -movflags +faststart "${outputFile}"`;
     }
@@ -35,7 +35,7 @@ export class ExportEngine {
     if (watermark) {
       filter = filter.replace(
         '[v]"',
-        `[v0]; [v0]drawtext=text='Made with ReelScreen':x=w-tw-30:y=h-th-40:fontsize=24:fontcolor=white@0.8:box=1:boxcolor=black@0.5:boxborderw=10[v]"`
+        `[v0]; [v0]drawtext=text='Made with ClipDesk':x=w-tw-30:y=h-th-40:fontsize=24:fontcolor=white@0.8:box=1:boxcolor=black@0.5:boxborderw=10[v]"`
       );
     }
 
@@ -233,7 +233,7 @@ export class ExportEngine {
     return blob.type.includes('mp4') ? 'mp4' : 'webm';
   }
 
-  public static downloadBlob(blob: Blob, filename = `reelscreen_reel.${ExportEngine.extensionFor(blob)}`): void {
+  public static downloadBlob(blob: Blob, filename = `clipdesk_reel.${ExportEngine.extensionFor(blob)}`): void {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

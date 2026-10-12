@@ -336,7 +336,7 @@ export class RecordingService {
       // Title
       ctx.fillStyle = '#8b949e';
       ctx.font = '14px JetBrains Mono, monospace';
-      ctx.fillText('App.tsx — ReelScreen Studio (1920x1080 Desktop View)', 120, 30);
+      ctx.fillText('App.tsx — ClipDesk Studio (1920x1080 Desktop View)', 120, 30);
 
       // Sidebar
       ctx.fillStyle = '#161b22';
@@ -407,7 +407,7 @@ export class RecordingService {
       ctx.fillRect(260, 800, 1660, 280);
       ctx.fillStyle = '#3fb950';
       ctx.font = '14px JetBrains Mono, monospace';
-      ctx.fillText('➜ reelscreen-cli git:(main) ✔ npm run export:reel', 280, 840);
+      ctx.fillText('➜ clipdesk-cli git:(main) ✔ npm run export:reel', 280, 840);
       ctx.fillStyle = '#8b949e';
       ctx.fillText('[ExportAgent] Rendering 1080x1920 @ 60 FPS... Done in 1.4s', 280, 875);
       ctx.fillText('[Output] reel_20261011_short.mp4 (High Bitrate 12Mbps)', 280, 905);
