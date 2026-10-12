@@ -64,7 +64,17 @@ Traditionally, converting widescreen desktop screen recordings into high-convert
     </td>
     <td width="50%">
       <h3>🎙️ Studio Voice DSP Enhancer</h3>
-      <p>Built-in Web Audio digital signal processing pipeline with a real-time noise gate (-45 dB), 3-band voice EQ (low cut, presence boost, air), and dynamic compressor to output crisp, podcast-grade voice-overs.</p>
+      <p>Built-in Web Audio digital signal processing pipeline with a background-safe noise gate (-45 dB), 3-band voice EQ (low cut, presence boost, air), and dynamic compressor to output crisp, podcast-grade voice-overs.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <h3>⚡ Dynamic Captions (Local Whisper.wasm)</h3>
+      <p>Auto-generate viral, word-animated subtitles directly on-device using <b>Whisper.wasm (Transformers.js)</b> with <b>zero API keys required</b>. Also supports ultra-fast Groq & OpenAI Whisper, live take dictation, and standard <code>.srt</code> / <code>.vtt</code> import & export.</p>
+    </td>
+    <td width="50%">
+      <h3>💻 Signed Windows Desktop App</h3>
+      <p>Bypasses browser sandboxing with low-level <code>uiohook-napi</code> global cursor hooks across VS Code, Figma, and Terminal. Pre-configured code-signing pipeline generates signed <code>.exe</code> (NSIS) installers with desktop shortcuts.</p>
     </td>
   </tr>
   <tr>
@@ -84,7 +94,7 @@ Traditionally, converting widescreen desktop screen recordings into high-convert
     </td>
     <td width="50%">
       <h3>🔒 100% Private & Local-First</h3>
-      <p>Zero cloud uploads, zero telemetry, and zero backend servers. All compositing and FFmpeg MP4 encoding executes completely on your device.</p>
+      <p>Zero cloud uploads, zero telemetry, and zero backend servers. All compositing, on-device Whisper transcription, and FFmpeg MP4 encoding execute completely on your device.</p>
     </td>
   </tr>
 </table>
@@ -161,7 +171,15 @@ flowchart TD
 ### 5. `ExportEngine` & `Mp4Converter` (`src/core/exportEngine.ts`, `src/core/mp4Converter.ts`)
 - **Native MP4 Recording:** Uses browser native H.264/MP4 encoding where available (Chrome 126+, Safari).
 - **Client-Side Transcoding:** Where browser only outputs WebM, client-side `@ffmpeg/ffmpeg` (Wasm) converts the media into high-bitrate H.264/AAC MP4 on-device with zero server compute.
+- **Silent & Worker-Clocked Subtitle Burning:** Burns animated subtitles directly into the video canvas without audible playback bleeding into speakers. Clocked via a Web Worker ticker (`ExportEngine.startTicker`) to ensure exports never stall when backgrounded.
 - **Desktop Hardware Acceleration:** In the Electron app, bundled `ffmpeg-static` converts recordings near-instantaneously without browser memory limits.
+
+### 6. `CaptionEngine` (`src/core/captionEngine.ts`)
+- **Local Whisper.wasm (Transformers.js):** 100% on-device speech-to-text powered by quantized ONNX models (`whisper-tiny.en` and `whisper-tiny`). Decodes video audio into 16 kHz mono Float32Array in-browser via Web Audio API with **zero API keys and zero cloud data sharing**.
+- **Cloud Whisper Integration:** Optional high-speed transcription using Groq (`whisper-large-v3-turbo`) and OpenAI (`whisper-1`) with word-level precision timestamps.
+- **Live Take Transcription:** Automatically captures in-take spoken sentences during recording via Web Speech API, perfectly synchronized with video elapsed time.
+- **Subtitle Interoperability:** Full bidirectional parsing and exporting of standard SubRip (`.srt`) and WebVTT (`.vtt`) files.
+- **Viral Word Animation:** Karaoke-style animated word highlighting (Hormozi, Beast, Neon, Minimal) with customizable Y-position, font size, and background pill opacity.
 
 ---
 
@@ -195,6 +213,12 @@ WtoR/
 ├── README.md                  # Comprehensive interactive project documentation
 ├── wide2Short.md              # Original specification and product vision blueprint
 │
+├── public/                    # 🌐 Static Assets & Downloads
+│   ├── .htaccess              # Hostinger COOP/COEP headers for Wasm FFmpeg
+│   └── downloads/             # Pre-built distribution packages
+│       ├── clipdesk-extension.zip # Packaged Chrome/Edge extension ready to load
+│       └── ClipDesk-Setup-1.0.0.exe # Signed Windows NSIS installer binary
+│
 ├── src/                       # 🌐 Web Studio & Shared Core Engines
 │   ├── main.tsx               # Web Studio bootstrap
 │   ├── App.tsx                # Main app state machine (welcome -> setup -> studio)
@@ -210,7 +234,8 @@ WtoR/
 │   │   ├── FramingOverlay.tsx         # Interactive crop grid overlay
 │   │   ├── BubbleStyleControls.tsx    # Webcam border and size adjustment modal
 │   │   ├── CountdownOverlay.tsx       # 3-2-1 animated countdown overlay
-│   │   ├── ExportModal.tsx            # Export preview, transcode progress, download
+│   │   ├── CaptionsGenerator.tsx      # Dynamic Captions Studio (Whisper.wasm + Cloud)
+│   │   ├── ExportModal.tsx            # Export preview, caption burning, download
 │   │   └── UpgradeModal.tsx           # Pro creator licensing dialog
 │   ├── core/                  # 🧠 Deterministic Real-Time Engines
 │   │   ├── types.ts                   # Core interfaces and data structures
@@ -218,6 +243,7 @@ WtoR/
 │   │   ├── zoomEngine.ts              # Attack-Hold-Decay click-zoom physics
 │   │   ├── audioMixer.ts              # Web Audio API multi-stream mixer
 │   │   ├── voiceProcessor.ts          # Noise gate, parametric EQ, and compressor DSP
+│   │   ├── captionEngine.ts           # On-device Whisper.wasm, Groq/OpenAI, .SRT parser
 │   │   ├── focusRegion.ts             # Focus region bounding box detector
 │   │   ├── frameSource.ts             # Display media and camera stream sampler
 │   │   ├── layoutAgent.ts             # Layout orchestrator (Follow, Blur, Mesh, 16:9)
@@ -268,7 +294,10 @@ WtoR/
 └── scripts/                   # ⚙️ Build and Tooling Scripts
     ├── verify_engines.mjs     # Automated test suite validating math and engines
     ├── run-electron.mjs       # Safe Electron bootstrap clearing env flags
-    └── make-extension-icons.mjs # Canvas generator for all extension icon sizes
+    ├── make-extension-icons.mjs # Canvas generator for all extension icon sizes
+    ├── package-downloads.mjs  # Packages extension into .zip and syncs installers
+    ├── create-code-signing-cert.ps1 # Generates self-signed RSA-2048 code signing PFX
+    └── build-signed-windows.ps1 # Builds signed Windows desktop NSIS installer (.exe)
 ```
 
 ---
@@ -319,10 +348,30 @@ Launch the desktop application in developer mode:
 ```bash
 npm run desktop
 ```
-Build standalone distributable installers:
+Build standalone Windows installer:
 ```bash
-npm run dist:desktop
-# Generates native installer inside dist-desktop/ (e.g., "ClipDesk Setup 1.0.0.exe")
+npm run dist:win
+# Generates native NSIS installer inside dist-desktop/ClipDesk-Setup-1.0.0.exe
+```
+
+#### 4. 🔐 Windows Code Signing & Signed Packaging
+Generate a local RSA-2048 Code Signing Certificate and compile a fully signed installer using Windows `signtool.exe`:
+```powershell
+# Step 1: Generate self-signed certificate (saved to certs/clipdesk-codesign.pfx)
+powershell -ExecutionPolicy Bypass -File scripts\create-code-signing-cert.ps1
+
+# Step 2: Build signed Windows NSIS installer with signtool.exe
+powershell -ExecutionPolicy Bypass -File scripts\build-signed-windows.ps1
+```
+
+#### 5. 📦 Package Downloads for Web Distribution
+Pre-package the Chrome Extension `.zip` and synchronize desktop installers for direct downloads:
+```bash
+# Zips extension into public/downloads/clipdesk-extension.zip and syncs installers
+npm run package:downloads
+
+# Build Web, Desktop, Extension, and packaging in one command:
+npm run package:all
 ```
 
 ---
