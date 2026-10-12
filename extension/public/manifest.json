@@ -1,13 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "ReelScreen - Vertical Screen Recorder",
-  "short_name": "ReelScreen",
+  "name": "ClipDesk - Vertical Screen Recorder",
+  "short_name": "ClipDesk",
   "version": "1.0.0",
   "description": "Record a tab or your screen with your camera as a 9:16 Reel, Short or TikTok, with cursor follow and click zoom.",
   "minimum_chrome_version": "126",
   "action": {
     "default_popup": "popup.html",
-    "default_title": "ReelScreen",
+    "default_title": "ClipDesk",
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png",

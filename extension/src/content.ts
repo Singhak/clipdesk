@@ -5,12 +5,12 @@ import { ControlAction, IDLE_STATE, RecState, STATE_KEY, elapsedMs, formatTime, 
 
 declare global {
   interface Window {
-    __reelscreenControls?: boolean;
+    __clipdeskControls?: boolean;
   }
 }
 
-if (!window.__reelscreenControls && window.top === window) {
-  window.__reelscreenControls = true;
+if (!window.__clipdeskControls && window.top === window) {
+  window.__clipdeskControls = true;
   init();
 }
 
@@ -66,7 +66,7 @@ function init(): void {
   function ensureHost(): ShadowRoot {
     if (root) return root;
     host = document.createElement('div');
-    host.id = 'reelscreen-controls';
+    host.id = 'clipdesk-controls';
     // Closed shadow root: page styles and scripts can't restyle or click the controls
     root = host.attachShadow({ mode: 'closed' });
     const style = document.createElement('style');
@@ -154,7 +154,7 @@ function init(): void {
     const bar = document.createElement('div');
     bar.className = 'bar';
     bar.setAttribute('role', 'toolbar');
-    bar.setAttribute('aria-label', 'ReelScreen recording controls');
+    bar.setAttribute('aria-label', 'ClipDesk recording controls');
     placeBar(bar);
 
     const grip = document.createElement('span');

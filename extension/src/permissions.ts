@@ -26,6 +26,6 @@ btn.addEventListener('click', async () => {
       );
     }
   }
-  out.textContent = `${results.join('. ')}. You can close this tab and start recording from the ReelScreen button.`;
+  out.textContent = `${results.join('. ')}. You can close this tab and start recording from the ClipDesk button.`;
   btn.disabled = false;
 });

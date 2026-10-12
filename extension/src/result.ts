@@ -36,7 +36,7 @@ async function main(): Promise<void> {
     box.textContent = notes.join(' ');
   }
 
-  const filename = `reelscreen_${new Date(rec.createdAt).toISOString().slice(0, 19).replace(/[:T]/g, '-')}.${ext}`;
+  const filename = `clipdesk_${new Date(rec.createdAt).toISOString().slice(0, 19).replace(/[:T]/g, '-')}.${ext}`;
   $('download').addEventListener('click', () => ExportEngine.downloadBlob(rec.blob, filename));
   $('delete').addEventListener('click', async () => {
     await deleteRecording(rec.id);

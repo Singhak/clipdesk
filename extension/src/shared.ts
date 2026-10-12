@@ -125,7 +125,7 @@ export async function send<T = unknown>(msg: Message): Promise<T | undefined> {
 }
 
 // Recordings are handed from the recorder tab to the result tab through IndexedDB (same extension origin)
-const DB_NAME = 'reelscreen';
+const DB_NAME = 'clipdesk';
 const STORE = 'recordings';
 
 export interface StoredRecording {

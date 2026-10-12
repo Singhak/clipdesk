@@ -170,7 +170,7 @@ const Popup: React.FC = () => {
     <div className="w-[340px] p-4 space-y-4">
       <div className="flex items-center gap-2">
         <img src="icons/icon-32.png" alt="" className="w-6 h-6" />
-        <h1 className="text-[15px] font-extrabold">ReelScreen</h1>
+        <h1 className="text-[15px] font-extrabold">ClipDesk</h1>
         <span className="ml-auto text-[10px] font-bold text-indigo-300 bg-indigo-500/15 px-2 py-0.5 rounded-full">9:16 RECORDER</span>
       </div>
 

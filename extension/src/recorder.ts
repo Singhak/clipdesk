@@ -85,7 +85,7 @@ async function startCamera(): Promise<boolean> {
     cameraSource = new TrackFrameSource(cameraStream.getVideoTracks()[0]);
     return true;
   } catch {
-    warnings.push('Camera is blocked or unavailable, so the camera bubble is off. Use "Allow camera & mic" in the ReelScreen popup.');
+    warnings.push('Camera is blocked or unavailable, so the camera bubble is off. Use "Allow camera & mic" in the ClipDesk popup.');
     return false;
   }
 }
@@ -237,7 +237,7 @@ async function main(): Promise<void> {
     try {
       micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
     } catch {
-      warnings.push('Microphone is blocked or unavailable, so there is no voice-over. Use "Allow camera & mic" in the ReelScreen popup.');
+      warnings.push('Microphone is blocked or unavailable, so there is no voice-over. Use "Allow camera & mic" in the ClipDesk popup.');
     }
   }
   if (config.camera) webcamConfig.enabled = await startCamera();
