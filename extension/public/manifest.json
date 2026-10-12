@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "ReelScreen - Vertical Screen Recorder",
+  "short_name": "ReelScreen",
+  "version": "1.0.0",
+  "description": "Record a tab or your screen with your camera as a 9:16 Reel, Short or TikTok, with cursor follow and click zoom.",
+  "minimum_chrome_version": "126",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "ReelScreen",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": ["tabCapture", "desktopCapture", "storage", "unlimitedStorage", "scripting", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "commands": {
+    "toggle-pause": {
+      "suggested_key": { "default": "Alt+Shift+P" },
+      "description": "Pause or resume recording"
+    },
+    "stop-recording": {
+      "suggested_key": { "default": "Alt+Shift+S" },
+      "description": "Stop and save recording"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #07080c;
+  color: #f8fafc;
+}
+
+/* Recorder and result previews: phone-shaped for reels, landscape for widescreen */
+#preview,
+.preview-video {
+  display: block;
+  height: min(70vh, 640px);
+  aspect-ratio: 9 / 16;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #000;
+}
+#preview.wide,
+.preview-video.wide {
+  height: auto;
+  width: min(90vw, 900px);
+  aspect-ratio: 16 / 9;
+}
