@@ -14,7 +14,7 @@ export const PRO_TIER: SubscriptionTier = {
   id: 'pro',
   name: 'Pro Creator',
   hasWatermark: false,
-  maxResolution: '4K',
+  maxResolution: '1080x1920',
   maxDurationSeconds: Infinity,
   proTemplatesUnlocked: true,
   highBitrate: true

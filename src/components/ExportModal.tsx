@@ -35,6 +35,7 @@ interface ExportModalProps {
   license: LicenseInfo;
   onOpenUpgrade: () => void;
   onNewRecording: () => void;
+  initialCaptions?: CaptionSegment[];
 }
 
 export const ExportModal: React.FC<ExportModalProps> = ({
@@ -43,10 +44,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   layoutMode,
   license,
   onOpenUpgrade,
-  onNewRecording
+  onNewRecording,
+  initialCaptions
 }) => {
   const [copiedCmd, setCopiedCmd] = useState(false);
-  const [copiedShare, setCopiedShare] = useState(false);
+  const [shareFeedback, setShareFeedback] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
 
   const isPro = license.tier === 'pro';
@@ -86,12 +88,13 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   });
 
   // Animated Captions state & settings
-  const [captionsEnabled, setCaptionsEnabled] = useState(false);
+  const [captionsEnabled, setCaptionsEnabled] = useState(() => Boolean(initialCaptions && initialCaptions.length > 0));
   const [captionStyle, setCaptionStyle] = useState<CaptionStyleId>('viral_karaoke');
   const [captionSettings, setCaptionSettings] = useState<CaptionCustomSettings>(DEFAULT_CAPTION_SETTINGS);
-  const [captionSegments, setCaptionSegments] = useState<CaptionSegment[]>(() =>
-    CaptionEngine.generateSmartCaptions(shownDuration || durationSeconds)
-  );
+  const [captionSegments, setCaptionSegments] = useState<CaptionSegment[]>(() => {
+    if (initialCaptions && initialCaptions.length > 0) return initialCaptions;
+    return CaptionEngine.generateSmartCaptions(shownDuration || durationSeconds);
+  });
 
   // Burning captions state
   const [isBurningCaptions, setIsBurningCaptions] = useState(false);
@@ -170,11 +173,30 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     }
   };
 
-  const handleCopyShareLink = () => {
-    const dummyUrl = `https://clipdesk.tv/v/reel-${Date.now().toString(36)}`;
-    navigator.clipboard.writeText(dummyUrl);
-    setCopiedShare(true);
-    setTimeout(() => setCopiedShare(false), 2000);
+  const handleShareVideo = async () => {
+    try {
+      const file = new File([exportBlob], `clipdesk_reel.${fileExt}`, {
+        type: exportBlob.type || 'video/mp4'
+      });
+      if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: 'ClipDesk Vertical Reel',
+          text: 'Captured with ClipDesk'
+        });
+        setShareFeedback('✓ Reel shared successfully!');
+        setTimeout(() => setShareFeedback(null), 3000);
+        return;
+      }
+    } catch (e: any) {
+      if (e.name === 'AbortError') return;
+      console.warn('Navigator share error:', e);
+    }
+
+    // Direct local save fallback
+    saveBlob(exportBlob);
+    setShareFeedback('✓ Saved directly to disk!');
+    setTimeout(() => setShareFeedback(null), 3000);
   };
 
   const ffmpegCommand = ExportEngine.buildFFmpegCommand({
@@ -368,7 +390,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             onTrimChange={setTrim}
           />
 
-          {/* Dynamic AI Captions Generator (Manual Typing + Speech-to-Text + Style/Position/Size/Background) */}
+          {/* Dynamic AI Captions Generator */}
           <CaptionsGenerator
             enabled={captionsEnabled}
             onToggleEnabled={setCaptionsEnabled}
@@ -384,6 +406,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               const video = document.querySelector('video');
               if (video) video.currentTime = sec;
             }}
+            recordedBlob={exportBlob}
           />
 
           {/* Watermark & Subscription Status */}
@@ -467,14 +490,15 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               </span>
             </button>
 
-            {/* Instant Cloud Share Link */}
+            {/* Honest Device Share & Local Export */}
             <button
+              id="btn-share-video"
               type="button"
-              onClick={handleCopyShareLink}
+              onClick={handleShareVideo}
               className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-slate-200 transition-colors cursor-pointer"
             >
               <Share2 className="w-3.5 h-3.5 text-indigo-400" />
-              <span>{copiedShare ? '🎉 Short Link Copied to Clipboard!' : '1-Click Cloud Share Link (clipdesk.tv)'}</span>
+              <span>{shareFeedback || 'Share Video / Quick Export'}</span>
             </button>
 
             {needsConversion && !isConverting && (

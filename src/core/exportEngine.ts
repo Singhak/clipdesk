@@ -322,6 +322,8 @@ export class ExportEngine {
       const canvasH = isWide ? 1080 : 1920;
 
       const video = document.createElement('video');
+      // Keep muted=false internally so audio samples are emitted to Web Audio,
+      // but do NOT connect to audioCtx.destination so speakers remain completely silent
       video.muted = false;
       video.playsInline = true;
       video.preload = 'auto';
@@ -344,13 +346,14 @@ export class ExportEngine {
         const duration = video.duration || 1;
         const fps = 30;
         const stream = canvas.captureStream(fps);
+        let audioCtx: AudioContext | null = null;
 
         try {
-          const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
           const sourceNode = audioCtx.createMediaElementSource(video);
           const destNode = audioCtx.createMediaStreamDestination();
+          // Connect solely to destination stream for video track, NEVER to speaker output
           sourceNode.connect(destNode);
-          sourceNode.connect(audioCtx.destination);
           destNode.stream.getAudioTracks().forEach((track) => stream.addTrack(track));
         } catch {
           // Continue if audio graph fails
@@ -365,7 +368,7 @@ export class ExportEngine {
         const mimeType = candidates.find((m) => MediaRecorder.isTypeSupported(m)) ?? 'video/webm';
         const recorder = new MediaRecorder(stream, {
           mimeType,
-          videoBitsPerSecond: 14000000
+          videoBitsPerSecond: 16000000
         });
 
         const chunks: Blob[] = [];
@@ -373,18 +376,20 @@ export class ExportEngine {
           if (e.data && e.data.size > 0) chunks.push(e.data);
         };
 
-        let animFrameId: number;
-        const renderLoop = () => {
+        let stopTicker: (() => void) | null = null;
+        const renderTick = () => {
           if (!video.paused && !video.ended) {
             ctx.drawImage(video, 0, 0, canvasW, canvasH);
             CaptionEngine.renderCaptions(ctx, video.currentTime, segments, style, canvasW, canvasH, customSettings);
             onProgress?.(Math.min(0.99, video.currentTime / duration));
-            animFrameId = requestAnimationFrame(renderLoop);
           }
         };
 
         recorder.onstop = () => {
-          cancelAnimationFrame(animFrameId);
+          if (stopTicker) stopTicker();
+          if (audioCtx && audioCtx.state !== 'closed') {
+            void audioCtx.close();
+          }
           URL.revokeObjectURL(blobUrl);
           video.removeAttribute('src');
           video.load();
@@ -394,7 +399,8 @@ export class ExportEngine {
 
         recorder.start(250);
         video.play().then(() => {
-          renderLoop();
+          // Worker ticker keeps rendering at 30 FPS even if the tab is hidden or minimized
+          stopTicker = ExportEngine.startTicker(1000 / fps, renderTick);
         }).catch((err) => {
           recorder.stop();
           reject(err);

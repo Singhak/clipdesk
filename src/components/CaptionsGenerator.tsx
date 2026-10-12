@@ -21,7 +21,12 @@ import {
   ChevronDown,
   ChevronUp,
   Clock,
-  Play
+  Play,
+  Zap,
+  Key,
+  Upload,
+  Download,
+  ExternalLink
 } from 'lucide-react';
 import {
   CaptionSegment,
@@ -53,6 +58,7 @@ interface CaptionsGeneratorProps {
   onUpdateSettings?: (settings: CaptionCustomSettings) => void;
   currentTime?: number;
   onSeek?: (sec: number) => void;
+  recordedBlob?: Blob | null;
 }
 
 const SUPPORTED_LANGUAGES = [
@@ -78,10 +84,22 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
   customSettings,
   onUpdateSettings,
   currentTime = 0,
-  onSeek
+  onSeek,
+  recordedBlob
 }) => {
-  // Navigation tabs
-  const [activeTab, setActiveTab] = useState<'type' | 'speech' | 'style'>('type');
+  // Navigation tabs: 'whisper' | 'speech' | 'type' | 'style'
+  const [activeTab, setActiveTab] = useState<'whisper' | 'speech' | 'type' | 'style'>('whisper');
+
+  // --- 0. Whisper AI Transcription State ---
+  const [whisperApiKey, setWhisperApiKey] = useState(() => localStorage.getItem('clipdesk_whisper_key') || '');
+  const [whisperProvider, setWhisperProvider] = useState<'groq' | 'openai'>(
+    () => (localStorage.getItem('clipdesk_whisper_provider') as 'groq' | 'openai') || 'groq'
+  );
+  const [whisperLang, setWhisperLang] = useState('auto');
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [whisperError, setWhisperError] = useState<string | null>(null);
+  const [whisperSuccess, setWhisperSuccess] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Internal settings state if not provided by parent
   const [localSettings, setLocalSettings] = useState<CaptionCustomSettings>(
@@ -235,6 +253,89 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
     }
     setIsListening(false);
     setInterimText('');
+  };
+
+  // --- Handlers: Whisper AI ---
+  const handleTranscribeWithWhisper = async () => {
+    setWhisperError(null);
+    setWhisperSuccess(null);
+
+    const key = whisperApiKey.trim();
+    if (!key) {
+      setWhisperError(
+        `Please enter your ${whisperProvider === 'groq' ? 'Groq' : 'OpenAI'} API key. Free Groq keys take 10 seconds at console.groq.com.`
+      );
+      return;
+    }
+    localStorage.setItem('clipdesk_whisper_key', key);
+    localStorage.setItem('clipdesk_whisper_provider', whisperProvider);
+
+    if (!recordedBlob || recordedBlob.size === 0) {
+      setWhisperError('No recorded video/audio track available to transcribe.');
+      return;
+    }
+
+    setIsTranscribing(true);
+    try {
+      const results = await CaptionEngine.transcribeWithWhisper({
+        blob: recordedBlob,
+        apiKey: key,
+        provider: whisperProvider,
+        language: whisperLang !== 'auto' ? whisperLang : undefined
+      });
+
+      if (!results || results.length === 0) {
+        setWhisperError('Whisper completed, but no spoken audio was detected in this clip.');
+        return;
+      }
+
+      onUpdateSegments(results);
+      onToggleEnabled(true);
+      setWhisperSuccess(`🎉 Success! Transcribed ${results.length} timestamped caption lines from your video.`);
+    } catch (err: any) {
+      console.error('Whisper transcription error:', err);
+      setWhisperError(err?.message || 'Failed to transcribe audio with Whisper.');
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  // --- Handlers: Subtitle File Import (.srt / .vtt) ---
+  const handleImportSubtitleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const content = evt.target?.result as string;
+      if (!content) return;
+      try {
+        const parsed = CaptionEngine.parseSrtOrVtt(content);
+        if (parsed.length > 0) {
+          onUpdateSegments(parsed);
+          onToggleEnabled(true);
+          setWhisperSuccess(`✓ Imported ${parsed.length} subtitle lines from ${file.name}!`);
+        } else {
+          setWhisperError('No timestamped subtitle segments found in this file.');
+        }
+      } catch (err: any) {
+        setWhisperError('Could not parse subtitle file: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handleExportSrt = () => {
+    if (segments.length === 0) return;
+    const srtContent = CaptionEngine.exportToSrt(segments);
+    const blob = new Blob([srtContent], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `clipdesk_captions_${Date.now()}.srt`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   // --- Handlers: Manual Typing ---
@@ -438,40 +539,57 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
       {enabled && (
         <div className="space-y-4 pt-1 animate-fadeIn">
           {/* Main Navigation Tabs */}
-          <div className="flex items-center gap-1.5 p-1 bg-black/50 rounded-xl border border-white/10">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-black/50 rounded-xl border border-white/10">
             <button
-              id="tab-type-captions"
+              id="tab-whisper-captions"
               type="button"
-              onClick={() => setActiveTab('type')}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'type'
-                  ? 'bg-indigo-600 text-white shadow-md'
+              onClick={() => setActiveTab('whisper')}
+              className={`flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'whisper'
+                  ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
                   : 'text-slate-400 hover:text-white hover:bg-white/5'
               }`}
             >
-              <Type className="w-3.5 h-3.5" />
-              <span>Type Captions</span>
-              {segments.length > 0 && (
-                <span className="ml-1 text-[10px] px-1.5 py-0.2 rounded-full bg-black/40 text-indigo-200">
-                  {segments.length}
-                </span>
-              )}
+              <Zap className="w-3.5 h-3.5" />
+              <span>Whisper AI</span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-black/30 font-extrabold uppercase tracking-wider">
+                Pro
+              </span>
             </button>
 
             <button
               id="tab-speech-captions"
               type="button"
               onClick={() => setActiveTab('speech')}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'speech'
-                  ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
+                  ? 'bg-indigo-600 text-white shadow-md'
                   : 'text-slate-400 hover:text-white hover:bg-white/5'
               }`}
             >
               <Mic className="w-3.5 h-3.5" />
-              <span>Web Speech API</span>
+              <span>Web Speech</span>
               {isListening && (
                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+              )}
+            </button>
+
+            <button
+              id="tab-type-captions"
+              type="button"
+              onClick={() => setActiveTab('type')}
+              className={`flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                activeTab === 'type'
+                  ? 'bg-indigo-600 text-white shadow-md'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Type className="w-3.5 h-3.5" />
+              <span>Type / SRT</span>
+              {segments.length > 0 && (
+                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/40 text-indigo-200">
+                  {segments.length}
+                </span>
               )}
             </button>
 
@@ -479,37 +597,260 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
               id="tab-style-captions"
               type="button"
               onClick={() => setActiveTab('style')}
-              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'style'
                   ? 'bg-indigo-600 text-white shadow-md'
                   : 'text-slate-400 hover:text-white hover:bg-white/5'
               }`}
             >
               <Palette className="w-3.5 h-3.5" />
-              <span>Location, Size & Bg</span>
+              <span>Style & Size</span>
             </button>
           </div>
 
           {/* =================================================================== */}
-          {/* TAB 1: TYPE CAPTIONS                                                */}
+          {/* TAB 0: WHISPER AI TRANSCRIPTION (GROQ / OPENAI)                      */}
+          {/* =================================================================== */}
+          {activeTab === 'whisper' && (
+            <div className="space-y-4 animate-fadeIn">
+              {/* Header Box */}
+              <div className="p-3.5 rounded-xl bg-gradient-to-r from-amber-500/10 via-black/40 to-indigo-500/10 border border-amber-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5 text-amber-400" />
+                      Automatic Speech-To-Text (Whisper AI)
+                    </span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+                      Word-Level Precision
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed">
+                    Accurately transcribe spoken audio from this video take using Groq or OpenAI Whisper.
+                    Zero audio stored on servers — calls run client-side.
+                  </p>
+                </div>
+
+                {recordedBlob ? (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] shrink-0 self-start sm:self-center">
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Clip Ready ({(recordedBlob.size / 1024 / 1024).toFixed(1)} MB)</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-400 text-[11px] shrink-0 self-start sm:self-center">
+                    <span>No clip recorded yet</span>
+                  </div>
+                )}
+              </div>
+
+              {whisperError && (
+                <div
+                  role="alert"
+                  className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-300 flex items-start justify-between gap-2"
+                >
+                  <span>{whisperError}</span>
+                  <button
+                    type="button"
+                    onClick={() => setWhisperError(null)}
+                    className="text-rose-400 hover:text-rose-200 cursor-pointer font-bold text-xs"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
+              {whisperSuccess && (
+                <div
+                  role="status"
+                  className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 flex items-start justify-between gap-2"
+                >
+                  <span>{whisperSuccess}</span>
+                  <button
+                    type="button"
+                    onClick={() => setWhisperSuccess(null)}
+                    className="text-emerald-400 hover:text-emerald-200 cursor-pointer font-bold text-xs"
+                  >
+                    ✕
+                  </button>
+                </div>
+              )}
+
+              {/* Provider & Key Configuration Card */}
+              <div className="p-4 rounded-xl bg-black/40 border border-white/10 space-y-3.5">
+                {/* Provider Selector */}
+                <div>
+                  <label className="text-[11px] font-semibold text-slate-300 block mb-1.5">
+                    Whisper AI Provider:
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setWhisperProvider('groq')}
+                      className={`p-2.5 rounded-lg border text-left cursor-pointer transition-all ${
+                        whisperProvider === 'groq'
+                          ? 'bg-amber-500/15 border-amber-500/50 text-white'
+                          : 'bg-black/30 border-white/5 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-amber-300">Groq Whisper</span>
+                        <span className="text-[10px] text-amber-400/80 font-mono">Ultra-Fast</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        whisper-large-v3-turbo · Free tier available
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setWhisperProvider('openai')}
+                      className={`p-2.5 rounded-lg border text-left cursor-pointer transition-all ${
+                        whisperProvider === 'openai'
+                          ? 'bg-indigo-500/15 border-indigo-500/50 text-white'
+                          : 'bg-black/30 border-white/5 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-indigo-300">OpenAI Whisper</span>
+                        <span className="text-[10px] text-indigo-400/80 font-mono">Industry Std</span>
+                      </div>
+                      <p className="text-[10px] text-slate-400 mt-0.5">
+                        whisper-1 · Uses OpenAI platform credits
+                      </p>
+                    </button>
+                  </div>
+                </div>
+
+                {/* API Key Input */}
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between">
+                    <label htmlFor="input-whisper-api-key" className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
+                      <Key className="w-3.5 h-3.5 text-amber-400" />
+                      <span>{whisperProvider === 'groq' ? 'Groq' : 'OpenAI'} API Key:</span>
+                    </label>
+                    <a
+                      href={whisperProvider === 'groq' ? 'https://console.groq.com/keys' : 'https://platform.openai.com/api-keys'}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[10px] text-amber-400 hover:text-amber-300 flex items-center gap-1"
+                    >
+                      <span>Get Free API Key</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                  <input
+                    id="input-whisper-api-key"
+                    type="password"
+                    value={whisperApiKey}
+                    onChange={(e) => setWhisperApiKey(e.target.value)}
+                    placeholder={whisperProvider === 'groq' ? 'gsk_...' : 'sk-...'}
+                    className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 font-mono"
+                  />
+                  <p className="text-[10px] text-slate-500">
+                    Saved in your browser localStorage only. Never sent to any 3rd party backend.
+                  </p>
+                </div>
+
+                {/* Audio Language & Transcribe Trigger Button */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+                  <div className="flex items-center gap-2">
+                    <label htmlFor="select-whisper-lang" className="text-[11px] text-slate-400">
+                      Spoken Language:
+                    </label>
+                    <select
+                      id="select-whisper-lang"
+                      value={whisperLang}
+                      onChange={(e) => setWhisperLang(e.target.value)}
+                      className="bg-black/60 border border-white/10 rounded-lg px-2.5 py-1 text-xs text-amber-300 focus:outline-none"
+                    >
+                      <option value="auto">🌐 Auto-Detect Language</option>
+                      <option value="en">English (EN)</option>
+                      <option value="es">Spanish (ES)</option>
+                      <option value="fr">French (FR)</option>
+                      <option value="de">German (DE)</option>
+                      <option value="it">Italian (IT)</option>
+                      <option value="pt">Portuguese (PT)</option>
+                      <option value="hi">Hindi (HI)</option>
+                      <option value="ja">Japanese (JA)</option>
+                    </select>
+                  </div>
+
+                  <button
+                    id="btn-run-whisper-transcribe"
+                    type="button"
+                    onClick={handleTranscribeWithWhisper}
+                    disabled={isTranscribing || !whisperApiKey.trim() || !recordedBlob}
+                    className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:opacity-40 text-black font-bold text-xs shadow-lg shadow-amber-500/20 cursor-pointer transition-all"
+                  >
+                    {isTranscribing ? (
+                      <>
+                        <span className="w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                        <span>Transcribing Clip...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-3.5 h-3.5 fill-black" />
+                        <span>Transcribe Video Audio</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* =================================================================== */}
+          {/* TAB 1: TYPE CAPTIONS & SUBTITLES IMPORT/EXPORT                      */}
           {/* =================================================================== */}
           {activeTab === 'type' && (
             <div className="space-y-3.5 animate-fadeIn">
               {/* Quick Add Bar */}
               <form onSubmit={handleAddTypedLine} className="space-y-2 bg-black/40 p-3 rounded-xl border border-white/5">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <span className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
                     <Edit3 className="w-3.5 h-3.5 text-indigo-400" />
                     <span>Type Caption Line</span>
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setIsScriptModalOpen(!isScriptModalOpen)}
-                    className="text-[11px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 cursor-pointer"
-                  >
-                    <FileText className="w-3 h-3" />
-                    <span>{isScriptModalOpen ? 'Hide Script Box' : 'Type / Paste Full Script'}</span>
-                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".srt,.vtt,text/plain"
+                      onChange={handleImportSubtitleFile}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="text-[11px] text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer"
+                      title="Import external .SRT or .VTT subtitles"
+                    >
+                      <Upload className="w-3 h-3" />
+                      <span>Import .SRT / .VTT</span>
+                    </button>
+
+                    {segments.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleExportSrt}
+                        className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 cursor-pointer"
+                        title="Download captions as standard .SRT file"
+                      >
+                        <Download className="w-3 h-3" />
+                        <span>Export .SRT</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => setIsScriptModalOpen(!isScriptModalOpen)}
+                      className="text-[11px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 cursor-pointer"
+                    >
+                      <FileText className="w-3 h-3" />
+                      <span>{isScriptModalOpen ? 'Hide Script Box' : 'Full Script Box'}</span>
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex flex-col sm:flex-row gap-2">

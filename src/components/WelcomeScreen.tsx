@@ -23,13 +23,17 @@ interface WelcomeScreenProps {
   onSelectTemplate: (id: TemplateId) => void;
   onContinue: () => void;
   onQuickStart: () => void;
+  isPro?: boolean;
+  onOpenUpgrade?: () => void;
 }
 
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   selectedTemplate,
   onSelectTemplate,
   onContinue,
-  onQuickStart
+  onQuickStart,
+  isPro = false,
+  onOpenUpgrade
 }) => {
   return (
     <div className="max-w-6xl mx-auto px-5 sm:px-8 py-8 sm:py-12 animate-fadeIn">
@@ -409,7 +413,13 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           {/* Card 5: Custom Studio */}
           <div
             id="template-card-custom"
-            onClick={() => onSelectTemplate('custom')}
+            onClick={() => {
+              if (!isPro && onOpenUpgrade) {
+                onOpenUpgrade();
+              } else {
+                onSelectTemplate('custom');
+              }
+            }}
             className={`group cursor-pointer p-6 rounded-2xl transition-all flex flex-col justify-between ${
               selectedTemplate === 'custom' ? 'studio-card-selected' : 'studio-card'
             }`}
@@ -446,12 +456,16 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                   </div>
                 </div>
 
-                {selectedTemplate === 'custom' && (
+                {selectedTemplate === 'custom' ? (
                   <span className="flex items-center gap-1 text-[11px] font-bold text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded-full border border-indigo-500/40">
                     <Check className="w-3 h-3 text-indigo-400" />
                     Selected
                   </span>
-                )}
+                ) : !isPro ? (
+                  <span className="text-[10px] font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+                    Unlock with Pro
+                  </span>
+                ) : null}
               </div>
 
               <p className="text-xs text-slate-400 leading-relaxed mb-5 mt-2">

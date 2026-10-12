@@ -265,9 +265,13 @@ export class CaptionEngine {
   }
 
   /**
-   * Initializes browser speech recognition during live recording take
+   * Initializes browser speech recognition during a live recording take.
+   * If getElapsedSec is provided, timestamps are synchronized with recording elapsed time.
    */
-  public startLiveTranscription(onUpdate?: (segments: CaptionSegment[]) => void): boolean {
+  public startLiveTranscription(
+    onUpdate?: (segments: CaptionSegment[]) => void,
+    getElapsedSec?: () => number
+  ): boolean {
     const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRec) {
       console.warn('SpeechRecognition API not available in this browser');
@@ -284,32 +288,35 @@ export class CaptionEngine {
       this.recordedSegments = [];
 
       this.recognition.onresult = (event: any) => {
-        const nowSec = (Date.now() - this.startTime) / 1000;
+        const nowSec = getElapsedSec ? getElapsedSec() : (Date.now() - this.startTime) / 1000;
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const res = event.results[i];
           const transcript = res[0].transcript.trim();
           if (!transcript) continue;
 
-          const words = transcript.split(/\s+/).map((w: string, idx: number, arr: string[]) => {
-            const span = 0.35;
-            const wStart = Math.max(0, nowSec - (arr.length - idx) * span);
-            return {
-              word: w,
-              startSec: wStart,
-              endSec: wStart + span
-            };
-          });
+          const wordsRaw = transcript.split(/\s+/).filter(Boolean);
+          const span = Math.max(0.4, Math.min(3.0, wordsRaw.length * 0.32));
+          const segStart = Math.max(0, nowSec - span);
+          const segEnd = Math.max(segStart + 0.5, nowSec);
+          const wordStep = (segEnd - segStart) / Math.max(1, wordsRaw.length);
+
+          const words = wordsRaw.map((w: string, idx: number) => ({
+            word: w,
+            startSec: segStart + idx * wordStep,
+            endSec: segStart + (idx + 1) * wordStep
+          }));
 
           const segment: CaptionSegment = {
-            id: `seg_${i}_${Date.now()}`,
+            id: `speech_${Date.now()}_${i}`,
             text: transcript,
-            startSec: words[0]?.startSec ?? Math.max(0, nowSec - 2),
-            endSec: nowSec + 0.5,
+            startSec: Math.round(segStart * 10) / 10,
+            endSec: Math.round(segEnd * 10) / 10,
             words
           };
 
           if (res.isFinal) {
             this.recordedSegments.push(segment);
+            this.currentSegment = null;
           } else {
             this.currentSegment = segment;
           }
@@ -321,7 +328,18 @@ export class CaptionEngine {
       };
 
       this.recognition.onerror = (e: any) => {
-        console.warn('Speech recognition notice:', e.error);
+        if (e.error !== 'no-speech') {
+          console.warn('Speech recognition notice:', e.error);
+        }
+      };
+
+      this.recognition.onend = () => {
+        // If still listening and recording is active, auto-restart to maintain continuity
+        if (this.isListening) {
+          try {
+            this.recognition.start();
+          } catch {}
+        }
       };
 
       this.recognition.start();
@@ -334,11 +352,12 @@ export class CaptionEngine {
   }
 
   public stopLiveTranscription(): CaptionSegment[] {
-    if (this.recognition && this.isListening) {
+    this.isListening = false;
+    if (this.recognition) {
       try {
         this.recognition.stop();
       } catch {}
-      this.isListening = false;
+      this.recognition = null;
     }
     const final = [...this.recordedSegments];
     if (this.currentSegment) final.push(this.currentSegment);
@@ -346,22 +365,224 @@ export class CaptionEngine {
   }
 
   /**
-   * Generates initial demo / smart speech segments if microphone speech recognition was not active
+   * Transcribes the audio directly using Groq Whisper (ultra-fast & free tier) or OpenAI Whisper API.
+   * Delivers timestamped words directly from the actual recorded audio track.
    */
-  public static generateSmartCaptions(durationSec: number): CaptionSegment[] {
-    const phrases = [
-      'Welcome to ClipDesk',
-      'The vertical content workspace',
-      'Turn your desktop code into viral reels',
-      'Zero manual editing required',
-      'Publish straight to Shorts and TikTok'
-    ];
+  public static async transcribeWithWhisper(options: {
+    blob: Blob;
+    apiKey: string;
+    provider?: 'groq' | 'openai';
+    language?: string;
+    prompt?: string;
+  }): Promise<CaptionSegment[]> {
+    const provider = options.provider ?? 'groq';
+    const endpoint =
+      provider === 'groq'
+        ? 'https://api.groq.com/openai/v1/audio/transcriptions'
+        : 'https://api.openai.com/v1/audio/transcriptions';
+
+    const model = provider === 'groq' ? 'whisper-large-v3-turbo' : 'whisper-1';
+
+    const formData = new FormData();
+    const fileExt = options.blob.type.includes('mp4') ? 'mp4' : 'webm';
+    formData.append('file', options.blob, `recording.${fileExt}`);
+    formData.append('model', model);
+    formData.append('response_format', 'verbose_json');
+    formData.append('timestamp_granularities[]', 'word');
+    formData.append('timestamp_granularities[]', 'segment');
+    if (options.language) formData.append('language', options.language);
+    if (options.prompt) formData.append('prompt', options.prompt);
+
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${options.apiKey.trim()}`
+      },
+      body: formData
+    });
+
+    if (!res.ok) {
+      let errMsg = `Whisper API failed with status ${res.status}`;
+      try {
+        const errJson = await res.json();
+        if (errJson?.error?.message) errMsg = errJson.error.message;
+      } catch {}
+      throw new Error(errMsg);
+    }
+
+    const data = await res.json();
+    const segments: CaptionSegment[] = [];
+
+    if (Array.isArray(data.segments) && data.segments.length > 0) {
+      data.segments.forEach((s: any, idx: number) => {
+        const text = (s.text || '').trim();
+        if (!text) return;
+
+        let words: CaptionWord[] = [];
+        if (Array.isArray(s.words) && s.words.length > 0) {
+          words = s.words.map((w: any) => ({
+            word: (w.word || '').trim(),
+            startSec: typeof w.start === 'number' ? w.start : s.start,
+            endSec: typeof w.end === 'number' ? w.end : s.end
+          }));
+        } else {
+          // Distribute words across the segment duration
+          const wordsRaw = text.split(/\s+/).filter(Boolean);
+          const step = Math.max(0.1, (s.end - s.start) / Math.max(1, wordsRaw.length));
+          words = wordsRaw.map((w: string, wIdx: number) => ({
+            word: w,
+            startSec: s.start + wIdx * step,
+            endSec: s.start + (wIdx + 1) * step
+          }));
+        }
+
+        segments.push({
+          id: `whisper_${idx}_${Date.now()}`,
+          text,
+          startSec: Math.round(s.start * 100) / 100,
+          endSec: Math.round(s.end * 100) / 100,
+          words
+        });
+      });
+    } else if (typeof data.text === 'string' && data.text.trim()) {
+      // Fallback: segment text with words array if available at root
+      return generateSegmentsFromText(data.text.trim(), data.duration || 10);
+    }
+
+    return segments;
+  }
+
+  /**
+   * Parses standard SubRip (.srt) or WebVTT (.vtt) file content into timed CaptionSegments
+   */
+  public static parseSrtOrVtt(content: string): CaptionSegment[] {
+    const lines = content.replace(/\r\n/g, '\n').split('\n');
+    const segments: CaptionSegment[] = [];
+    let i = 0;
+
+    const parseTime = (timeStr: string): number => {
+      const match = timeStr.trim().match(/(?:(\d{1,2}):)?(\d{2}):(\d{2})[,.](\d{3})/);
+      if (!match) return 0;
+      const hours = parseInt(match[1] || '0', 10);
+      const mins = parseInt(match[2], 10);
+      const secs = parseInt(match[3], 10);
+      const ms = parseInt(match[4], 10);
+      return hours * 3600 + mins * 60 + secs + ms / 1000;
+    };
+
+    while (i < lines.length) {
+      const line = lines[i].trim();
+      if (!line || line.startsWith('WEBVTT')) {
+        i++;
+        continue;
+      }
+
+      // Check for timestamp line (e.g. 00:00:01.000 --> 00:00:04.000)
+      if (line.includes('-->')) {
+        const parts = line.split('-->');
+        const startSec = parseTime(parts[0]);
+        const endSec = parseTime(parts[1]);
+        i++;
+
+        // Collect subtitle text lines until next blank line
+        const textLines: string[] = [];
+        while (i < lines.length && lines[i].trim() && !lines[i].includes('-->')) {
+          textLines.push(lines[i].trim());
+          i++;
+        }
+
+        const text = textLines.join(' ');
+        if (text) {
+          const wordsRaw = text.split(/\s+/).filter(Boolean);
+          const step = Math.max(0.1, (endSec - startSec) / Math.max(1, wordsRaw.length));
+          const words = wordsRaw.map((w, wIdx) => ({
+            word: w,
+            startSec: startSec + wIdx * step,
+            endSec: startSec + (wIdx + 1) * step
+          }));
+
+          segments.push({
+            id: `sub_${segments.length}_${Date.now()}`,
+            text,
+            startSec: Math.round(startSec * 100) / 100,
+            endSec: Math.round(endSec * 100) / 100,
+            words
+          });
+        }
+      } else {
+        i++;
+      }
+    }
+
+    return segments;
+  }
+
+  /**
+   * Serializes an array of CaptionSegments into standard SubRip (.SRT) format.
+   */
+  public static exportToSrt(segments: CaptionSegment[]): string {
+    const formatTime = (totalSec: number): string => {
+      const hours = Math.floor(totalSec / 3600);
+      const mins = Math.floor((totalSec % 3600) / 60);
+      const secs = Math.floor(totalSec % 60);
+      const ms = Math.floor((totalSec % 1) * 1000);
+      const pad = (n: number, w: number = 2) => String(n).padStart(w, '0');
+      return `${pad(hours)}:${pad(mins)}:${pad(secs)},${pad(ms, 3)}`;
+    };
+
+    return segments
+      .map((seg, idx) => {
+        return `${idx + 1}\n${formatTime(seg.startSec)} --> ${formatTime(seg.endSec)}\n${seg.text}\n`;
+      })
+      .join('\n');
+  }
+
+  /**
+   * Generates initial contextual outline markers if speech was not transcribed yet.
+   * Uses template-aware topics (e.g. Coding, Product Demo) instead of promotional ads.
+   */
+  public static generateSmartCaptions(
+    durationSec: number,
+    templateId?: string
+  ): CaptionSegment[] {
+    let phrases: string[];
+
+    if (templateId === 'product_demo') {
+      phrases = [
+        'Welcome to the Demo',
+        'Key Features & Workflow',
+        'Real-Time Interactivity',
+        'Summary & Next Steps'
+      ];
+    } else if (templateId === 'presentation') {
+      phrases = [
+        'Executive Overview',
+        'Core Insights & Analysis',
+        'Strategic Opportunity',
+        'Key Takeaways'
+      ];
+    } else if (templateId === 'browser') {
+      phrases = [
+        'Live Web Walkthrough',
+        'Dashboard Navigation',
+        'Key Controls & Options',
+        'Summary & Quick Tips'
+      ];
+    } else {
+      // Default: coding or general developer tutorial
+      phrases = [
+        'Project Architecture Overview',
+        'Writing the Core Implementation',
+        'Testing & Live Terminal Output',
+        'Key Takeaways & Wrap Up'
+      ];
+    }
 
     const segments: CaptionSegment[] = [];
-    const step = Math.min(3.5, Math.max(1.8, durationSec / (phrases.length + 1)));
+    const step = Math.min(4.0, Math.max(2.0, durationSec / (phrases.length + 0.5)));
 
     for (let i = 0; i < phrases.length; i++) {
-      const start = i * step + 0.4;
+      const start = i * step + 0.3;
       const end = Math.min(durationSec, start + step - 0.2);
       if (start >= durationSec) break;
 
@@ -372,10 +593,10 @@ export class CaptionEngine {
       });
 
       segments.push({
-        id: `gen_${i}`,
+        id: `outline_${i}_${Date.now()}`,
         text: phrases[i],
-        startSec: start,
-        endSec: end,
+        startSec: Math.round(start * 10) / 10,
+        endSec: Math.round(end * 10) / 10,
         words
       });
     }

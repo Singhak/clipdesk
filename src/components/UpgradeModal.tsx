@@ -163,11 +163,15 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, lic
                   </li>
                   <li className="flex items-center gap-2 text-slate-400">
                     <span className="w-4 h-4 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center text-[10px] shrink-0 font-bold">!</span>
+                    <span>90-second recording duration cap</span>
+                  </li>
+                  <li className="flex items-center gap-2 text-slate-400">
+                    <span className="w-4 h-4 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center text-[10px] shrink-0 font-bold">!</span>
                     <span>Includes ClipDesk watermark badge</span>
                   </li>
                   <li className="flex items-center gap-2 text-slate-400">
                     <span className="w-4 h-4 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center text-[10px] shrink-0 font-bold">!</span>
-                    <span>Standard export bitrate</span>
+                    <span>Standard export bitrate (6 Mbps)</span>
                   </li>
                 </ul>
               </div>
@@ -193,15 +197,15 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, lic
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                    <span>Dynamic AI Animated Captions</span>
+                    <span><strong>Dynamic AI Captions</strong> (Whisper & Live Voice)</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                    <span>Ultra-crisp 4K 60FPS high bitrate</span>
+                    <span><strong>16 Mbps High Bitrate</strong> 1080p 60FPS Master Export</span>
                   </li>
                   <li className="flex items-center gap-2">
                     <Check className="w-4 h-4 text-amber-400 shrink-0" />
-                    <span>Web, Chrome Extension & Desktop sync</span>
+                    <span><strong>All Pro Templates</strong> & Desktop App Sync</span>
                   </li>
                 </ul>
               </div>

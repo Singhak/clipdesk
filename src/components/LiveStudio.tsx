@@ -12,7 +12,10 @@ import {
   Eye,
   EyeOff,
   Camera,
-  CameraOff
+  CameraOff,
+  Monitor,
+  Download,
+  X
 } from 'lucide-react';
 import { VerticalCanvas } from './VerticalCanvas';
 import { FloatingRecordingBar } from './FloatingRecordingBar';
@@ -24,6 +27,7 @@ import { BubbleStyleControls } from './BubbleStyleControls';
 import { AudioMeter } from './AudioMeter';
 import { TemplateConfig, LayoutMode, SmartFeatures, LicenseInfo, ExportSettings, WebcamConfig } from '../core/types';
 import { ExportEngine } from '../core/exportEngine';
+import { CaptionEngine, CaptionSegment } from '../core/captionEngine';
 
 interface LiveStudioProps {
   stream: MediaStream | null;
@@ -39,7 +43,7 @@ interface LiveStudioProps {
   layoutMode: LayoutMode;
   license: LicenseInfo;
   onLayoutChange: (mode: LayoutMode) => void;
-  onFinishRecording: (recordedBlob: Blob, durationSec: number) => void;
+  onFinishRecording: (recordedBlob: Blob, durationSec: number, liveCaptions?: CaptionSegment[]) => void;
   onCancel: () => void;
 }
 
@@ -101,12 +105,16 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   const [webcamVideoEl, setWebcamVideoEl] = useState<HTMLVideoElement | null>(null);
   const isWide = layoutMode === 'widescreen';
+  const isPro = license.tier === 'pro';
   const [penActive, setPenActive] = useState(false);
   const [clearSignal, setClearSignal] = useState(0);
   const [popoutWin, setPopoutWin] = useState<Window | null>(null);
   const [popoutNote, setPopoutNote] = useState<string | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const recorderRef = useRef<ReturnType<typeof ExportEngine.startRecordingCanvas> | null>(null);
+  const captionEngineRef = useRef<CaptionEngine | null>(null);
+  const [liveCaptions, setLiveCaptions] = useState<CaptionSegment[]>([]);
+  const [isDesktopModalOpen, setIsDesktopModalOpen] = useState(false);
   const isStoppingRef = useRef(false);
   const elapsedRef = useRef(0);
   const [recordError, setRecordError] = useState<string | null>(null);
@@ -121,7 +129,8 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   const [isPaused, setIsPaused] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [simulatedMouse, setSimulatedMouse] = useState<{ x: number; y: number; click?: boolean } | null>(null);
-  const [isMirrorShieldActive, setIsMirrorShieldActive] = useState(true);
+  // Default Mirror Shield to false so creator immediately sees their screen feed without disorientation
+  const [isMirrorShieldActive, setIsMirrorShieldActive] = useState(false);
 
   const timerRef = useRef<number | null>(null);
 
@@ -208,12 +217,23 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           resolution: isWide ? '1920x1080' : '1080x1920',
           fps: isWide ? 30 : 60,
           layout: layoutMode,
-          includeWatermark: license.tier === 'free',
+          includeWatermark: !isPro,
           templateId: template.id
         };
 
         const recorder = ExportEngine.startRecordingCanvas(canvasRef.current, audioStream, exportSettings);
         recorderRef.current = recorder;
+
+        // Start real-time speech-to-text recognition on mic input
+        try {
+          captionEngineRef.current = new CaptionEngine();
+          captionEngineRef.current.startLiveTranscription(
+            (segs) => setLiveCaptions(segs),
+            () => elapsedRef.current
+          );
+        } catch (err) {
+          console.warn('Live speech recognition notice:', err);
+        }
       } catch (e) {
         console.warn('MediaRecorder error:', e);
         setRecordError('Recording could not start in this browser, so nothing is being saved. Go back and try again, or use a current Chrome, Edge or Safari.');
@@ -233,6 +253,11 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     const secs = Math.floor(accumulatedMsRef.current / 1000);
     elapsedRef.current = secs;
     setElapsedSeconds(secs);
+
+    // Enforce Free tier 90s duration cap to prevent unbounded resource leak and provide commercial upgrade trigger
+    if (!isPro && secs >= 90) {
+      void stopAndExportRef.current();
+    }
   };
 
   useEffect(() => {
@@ -263,13 +288,26 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     setIsRecording(false);
     if (timerRef.current) clearInterval(timerRef.current);
 
+    // Stop live caption transcription
+    let capturedCaptions: CaptionSegment[] = [];
+    if (captionEngineRef.current) {
+      try {
+        capturedCaptions = captionEngineRef.current.stopLiveTranscription();
+      } catch (err) {
+        console.warn('Failed to stop live transcription:', err);
+      }
+    }
+    if (capturedCaptions.length === 0 && liveCaptions.length > 0) {
+      capturedCaptions = liveCaptions;
+    }
+
     const blob = recorderRef.current ? await recorderRef.current.stop() : null;
     if (!blob || blob.size === 0) {
       isStoppingRef.current = false;
       setRecordError('The recording is empty, so there is nothing to export. Go back and record again.');
       return;
     }
-    onFinishRecording(blob, elapsedRef.current);
+    onFinishRecording(blob, elapsedRef.current, capturedCaptions);
   };
 
   // Keyboard shortcuts (work while this tab or the pop-out window has focus)
@@ -406,6 +444,19 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
             </div>
           )}
 
+          {/* Free Tier Duration Pill */}
+          {!isPro && (
+            <div
+              className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold ${
+                elapsedSeconds >= 75
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse'
+                  : 'bg-white/5 text-slate-300 border border-white/10'
+              }`}
+            >
+              <span>Free Plan: {Math.max(0, 90 - elapsedSeconds)}s left</span>
+            </div>
+          )}
+
           {isSimulated && (
             <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300">
               <Sparkles className="w-3.5 h-3.5" />
@@ -509,7 +560,13 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
 
               {/* Mirror Shield Active Dashboard */}
               {isMirrorShieldActive && (
-                <div className="w-full h-full p-6 flex flex-col items-center justify-center text-center bg-gradient-to-b from-[#0a0d16] via-[#0d101c] to-[#080a12] select-none">
+                <div className="w-full h-full p-6 flex flex-col items-center justify-center text-center bg-gradient-to-b from-[#0a0d16] via-[#0d101c] to-[#080a12] select-none relative">
+                  {/* Miniature PiP Stream Preview so creator never loses orientation */}
+                  <div className="absolute top-3 left-3 w-32 aspect-video rounded-lg overflow-hidden border border-white/20 shadow-lg bg-black/80 pointer-events-none">
+                    <StreamVideo stream={stream} className="w-full h-full object-cover" />
+                    <span className="absolute bottom-1 right-1 text-[8px] bg-black/80 px-1 rounded text-emerald-400 font-mono">LIVE FEED</span>
+                  </div>
+
                   <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400 mb-3 shadow-lg shadow-emerald-500/15">
                     <Shield className="w-7 h-7" />
                   </div>
@@ -541,12 +598,25 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
               </div>
             </div>
 
-            {/* Tips banner */}
-            <div className="mt-4 flex items-start gap-2.5 p-3 rounded-xl bg-white/[0.03] border border-white/5 text-xs text-slate-300">
-              <Info className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
-              <span>
-                Move your cursor around the monitor feed. The 9:16 virtual camera dynamically follows with silky smooth damping, keeping your action centered!
-              </span>
+            {/* Desktop App Bridge & Guidance banner */}
+            <div className="mt-4 p-3.5 rounded-xl bg-gradient-to-r from-indigo-950/30 via-black/40 to-indigo-950/30 border border-indigo-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-start gap-2.5 text-slate-300">
+                <Info className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+                <div>
+                  <span>
+                    Web Studio tracks cursor inside this preview. For <strong>system-wide cursor following</strong> across native applications (VS Code, Terminal, Figma), launch the <strong>Desktop App</strong>.
+                  </span>
+                </div>
+              </div>
+              <button
+                id="btn-open-desktop-guide"
+                type="button"
+                onClick={() => setIsDesktopModalOpen(true)}
+                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shrink-0 transition-all cursor-pointer shadow-md shadow-indigo-600/30"
+              >
+                <Monitor className="w-3.5 h-3.5" />
+                <span>Desktop App</span>
+              </button>
             </div>
           </div>
 
@@ -845,6 +915,69 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           onToggleWebcam={onToggleWebcam}
           onUpdateWebcamConfig={onUpdateWebcamConfig}
         />
+      )}
+
+      {/* Desktop App Information Modal */}
+      {isDesktopModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="relative w-full max-w-lg bg-[#0e111a] border border-white/10 rounded-2xl shadow-2xl p-6 sm:p-7 text-white">
+            <button
+              onClick={() => setIsDesktopModalOpen(false)}
+              className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/5 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-2.5 mb-4">
+              <div className="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/25 text-indigo-400">
+                <Monitor className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold">ClipDesk Desktop App</h3>
+                <p className="text-xs text-indigo-300">Native OS Cursor Tracking for Windows & macOS</p>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-xs text-slate-300 leading-relaxed mb-6">
+              <p>
+                Because web browsers enforce security sandboxing, web apps cannot inspect your mouse cursor coordinates or clicks when you switch to other desktop programs.
+              </p>
+              <div className="p-3 rounded-xl bg-black/40 border border-white/5 space-y-2">
+                <div className="flex items-start gap-2">
+                  <span className="text-emerald-400 font-bold">✓</span>
+                  <span><strong>System-Wide Mouse Tracking:</strong> Low-level native hooks (<code className="text-indigo-300 font-mono">uiohook-napi</code>) follow clicks & typing across VS Code, Figma, Terminal, and Chrome.</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-emerald-400 font-bold">✓</span>
+                  <span><strong>Invisible Overlays:</strong> Floating toolbar and countdown use OS content protection to remain completely invisible in final video.</span>
+                </div>
+                <div className="flex items-start gap-2">
+                  <span className="text-emerald-400 font-bold">✓</span>
+                  <span><strong>Native FFmpeg Pipeline:</strong> Fast hardware-accelerated MP4 rendering without WebAssembly memory limits.</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-2.5">
+              <button
+                onClick={() => {
+                  window.open('https://github.com/Singhak/clipdesk/releases', '_blank');
+                  setIsDesktopModalOpen(false);
+                }}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+              >
+                <Download className="w-4 h-4" />
+                <span>Download Desktop (.exe / .dmg)</span>
+              </button>
+              <button
+                onClick={() => setIsDesktopModalOpen(false)}
+                className="py-2.5 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-semibold cursor-pointer"
+              >
+                Continue in Web Studio
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

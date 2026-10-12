@@ -18,6 +18,7 @@ import {
   LicenseInfo,
   WebcamConfig
 } from './core/types';
+import { CaptionSegment } from './core/captionEngine';
 
 export const App: React.FC = () => {
   const [currentStep, setCurrentStep] = useState<'welcome' | 'setup' | 'studio' | 'export'>('welcome');
@@ -61,6 +62,7 @@ export const App: React.FC = () => {
   const [captureWarnings, setCaptureWarnings] = useState<string[]>([]);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [recordedDuration, setRecordedDuration] = useState(0);
+  const [recordedCaptions, setRecordedCaptions] = useState<CaptionSegment[]>([]);
 
   // Crash recovery state
   const [recoverableSession, setRecoverableSession] = useState<{ metadata: SessionMetadata; blob: Blob } | null>(null);
@@ -101,8 +103,12 @@ export const App: React.FC = () => {
 
   // Update layout default when template changes
   const handleSelectTemplate = (templateId: TemplateId) => {
-    setSelectedTemplate(templateId);
     const tmpl = TEMPLATES[templateId];
+    if (tmpl?.proOnly && license.tier !== 'pro') {
+      setIsUpgradeModalOpen(true);
+      return;
+    }
+    setSelectedTemplate(templateId);
     if (tmpl) {
       // A widescreen choice is kept; vertical defaults to the focus crop so the reel shows what you picked
       setLayoutMode((current) => (current === 'widescreen' ? current : 'dynamic_crop'));
@@ -193,11 +199,12 @@ export const App: React.FC = () => {
     setCurrentStep('studio');
   };
 
-  const handleFinishRecording = (blob: Blob, durationSec: number) => {
+  const handleFinishRecording = (blob: Blob, durationSec: number, liveCaptions?: CaptionSegment[]) => {
     recordingService.stop();
     setActiveWebcamStream(null);
     setRecordedBlob(blob);
     setRecordedDuration(durationSec);
+    setRecordedCaptions(liveCaptions || []);
     setCurrentStep('export');
   };
 
@@ -350,6 +357,8 @@ export const App: React.FC = () => {
             onSelectTemplate={handleSelectTemplate}
             onContinue={() => setCurrentStep('setup')}
             onQuickStart={() => handleStartRecording()}
+            isPro={license.tier === 'pro'}
+            onOpenUpgrade={() => setIsUpgradeModalOpen(true)}
           />
         )}
 
@@ -413,6 +422,7 @@ export const App: React.FC = () => {
             license={license}
             onOpenUpgrade={() => setIsUpgradeModalOpen(true)}
             onNewRecording={handleNewRecording}
+            initialCaptions={recordedCaptions}
           />
         )}
       </main>
