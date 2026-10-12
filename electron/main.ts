@@ -193,8 +193,10 @@ function showResult(id: string): void {
   const rec = recordings.get(id);
   const wide = rec?.layout === 'widescreen';
   const win = new BrowserWindow({
-    width: wide ? 1000 : 560,
-    height: wide ? 800 : 940,
+    width: wide ? 1160 : 760,
+    height: wide ? 880 : 960,
+    minWidth: 680,
+    minHeight: 700,
     title: 'ClipDesk recording',
     icon: ICON,
     backgroundColor: '#07080c',
@@ -691,6 +693,35 @@ function registerIpc(): void {
     await shell.trashItem(meta.path);
     recordings.delete(id);
     return true;
+  });
+  ipcMain.handle('result:trim', async (_e, { id, startSec, endSec }: { id: string; startSec: number; endSec: number }) => {
+    const meta = recordings.get(id);
+    if (!meta) return null;
+    try {
+      const ext = path.extname(meta.path);
+      const dir = path.dirname(meta.path);
+      const base = path.basename(meta.path, ext);
+      const trimmedPath = path.join(dir, `${base}_trimmed_${Date.now()}${ext}`);
+
+      await FFmpegManager.trimVideo(meta.path, trimmedPath, startSec, endSec);
+
+      const stats = await fs.stat(trimmedPath);
+      const updatedMeta: SavedRecording = {
+        ...meta,
+        path: trimmedPath,
+        size: stats.size,
+        timerMs: Math.round((endSec - startSec) * 1000)
+      };
+      recordings.set(id, updatedMeta);
+
+      return {
+        meta: updatedMeta,
+        bytes: await fs.readFile(trimmedPath)
+      };
+    } catch (err) {
+      console.error('Failed to trim video with native FFmpeg:', err);
+      return null;
+    }
   });
   ipcMain.on('result:again', (e) => {
     BrowserWindow.fromWebContents(e.sender)?.close();

@@ -27,7 +27,7 @@ body.overlay {
 
 .preview-video {
   display: block;
-  height: min(68vh, 680px);
+  height: min(50vh, 500px);
   aspect-ratio: 9 / 16;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -35,8 +35,94 @@ body.overlay {
 }
 .preview-video.wide {
   height: auto;
-  width: min(92vw, 900px);
+  width: min(88vw, 760px);
   aspect-ratio: 16 / 9;
+}
+
+/* Dynamic Captions preset styling for overlay preview */
+.caption-viral_karaoke {
+  font-family: Impact, system-ui, sans-serif;
+  text-transform: uppercase;
+  font-weight: 900;
+  font-size: 22px;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.85);
+  padding: 6px 14px;
+  border-radius: 10px;
+  text-shadow: 2px 2px 0px #000, -2px -2px 0px #000, 2px -2px 0px #000, -2px 2px 0px #000;
+  letter-spacing: 0.05em;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.caption-viral_karaoke .word-active {
+  color: #fde047;
+  transform: scale(1.08);
+  display: inline-block;
+  text-shadow: 0 0 12px rgba(253, 224, 71, 0.8), 2px 2px 0px #000;
+}
+
+.caption-neon_cyber {
+  font-family: ui-monospace, monospace;
+  font-weight: 800;
+  font-size: 20px;
+  color: #67e8fa;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  padding: 6px 14px;
+  border-radius: 8px;
+  box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.caption-neon_cyber .word-active {
+  color: #38bdf8;
+  text-shadow: 0 0 10px #38bdf8;
+  display: inline-block;
+}
+
+.caption-minimal_clean {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 19px;
+  color: #f8fafc;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(8px);
+  padding: 6px 14px;
+  border-radius: 9999px;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.caption-minimal_clean .word-active {
+  color: #818cf8;
+  display: inline-block;
+}
+
+.caption-tiktok_punch {
+  font-family: Impact, system-ui, sans-serif;
+  text-transform: uppercase;
+  font-weight: 900;
+  font-size: 24px;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.9);
+  padding: 7px 15px;
+  border-radius: 12px;
+  border: 2px solid #f43f5e;
+  text-shadow: 2px 2px 0px #000;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.caption-tiktok_punch .word-active {
+  color: #f43f5e;
+  transform: scale(1.12);
+  display: inline-block;
 }
 
 @keyframes rec-pulse {

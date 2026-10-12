@@ -3,22 +3,146 @@
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; script-src 'self'" />
-    <title>ClipDesk recording</title>
+    <title>ClipDesk Recording</title>
   </head>
-  <body class="">
-    <main class="min-h-screen flex flex-col items-center justify-center gap-3 p-5 text-center">
-      <h1 id="title" class="text-2xl font-black">Loading…</h1>
-      <p id="meta" class="text-sm text-slate-400 font-mono"></p>
-      <div id="notes" role="alert" hidden class="max-w-md p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200"></div>
-      <video id="video" controls autoplay loop playsinline class="preview-video"></video>
-      <div id="actions" class="flex flex-wrap justify-center gap-2">
-        <button id="folder" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-sm font-extrabold cursor-pointer">Show in folder</button>
-        <button id="save-as" class="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-sm font-bold cursor-pointer">Save a copy…</button>
-        <button id="again" class="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-sm font-bold cursor-pointer">New recording</button>
-        <button id="trash" class="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-sm text-slate-300 cursor-pointer">Delete</button>
+  <body class="bg-[#07080c] text-slate-100 antialiased selection:bg-indigo-500/30">
+    <main class="min-h-screen flex flex-col items-center justify-start gap-4 p-5 text-center max-w-5xl mx-auto">
+      
+      <!-- Top Header -->
+      <div class="flex flex-col items-center gap-1">
+        <h1 id="title" class="text-2xl font-black tracking-tight text-white">Loading…</h1>
+        <p id="meta" class="text-xs text-slate-400 font-mono"></p>
       </div>
-      <p id="path" class="text-[11px] text-slate-500 break-all max-w-md"></p>
-      <p class="text-xs text-slate-500">Upload the MP4 straight to Instagram Reels, YouTube Shorts or TikTok.</p>
+
+      <!-- Warning Notes Banner -->
+      <div id="notes" role="alert" hidden class="w-full max-w-2xl p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200"></div>
+      
+      <!-- Action Toast / Feedback -->
+      <div id="toast" role="status" hidden class="w-full max-w-2xl p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-xs text-emerald-300 font-semibold transition-all"></div>
+
+      <!-- Video Preview Player with Dynamic Captions Overlay -->
+      <div class="relative flex flex-col items-center justify-center group">
+        <video id="video" playsinline class="preview-video shadow-2xl"></video>
+        
+        <!-- Live Animated Captions Overlay -->
+        <div id="captions-overlay" class="absolute inset-0 pointer-events-none flex flex-col justify-end items-center pb-12 px-6">
+          <div id="caption-box" class="transition-all duration-150 transform"></div>
+        </div>
+
+        <!-- Play / Pause Floating Toggle -->
+        <button id="play-pause-btn" class="absolute bottom-4 right-4 px-3 py-1.5 rounded-lg bg-black/60 hover:bg-black/80 backdrop-blur-md border border-white/10 text-xs font-semibold text-white/90 flex items-center gap-1.5 cursor-pointer transition shadow-lg">
+          <span id="play-icon">▶</span> <span id="play-text">Play</span>
+        </button>
+      </div>
+
+      <!-- Desktop Video Editor Suite -->
+      <div id="editor-suite" class="w-full max-w-2xl flex flex-col gap-3.5 bg-slate-900/60 border border-white/10 rounded-2xl p-4 backdrop-blur-xl text-left shadow-2xl">
+        
+        <!-- Timeline Trimmer Section -->
+        <div class="flex flex-col gap-2">
+          <div class="flex items-center justify-between text-xs font-semibold text-slate-300">
+            <span class="flex items-center gap-1.5 text-indigo-400">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
+              Timeline Trimmer (Precision Cut)
+            </span>
+            <div class="font-mono text-[11px] text-slate-400">
+              <span id="trim-time-start" class="text-indigo-300 font-bold">00:00.0</span>
+              <span class="text-slate-600"> — </span>
+              <span id="trim-time-end" class="text-indigo-300 font-bold">00:00.0</span>
+              <span class="text-slate-500"> (Span: </span><span id="trim-time-span" class="text-emerald-400 font-bold">00:00.0</span><span class="text-slate-500">)</span>
+            </div>
+          </div>
+
+          <!-- Interactive Scrubber Track -->
+          <div id="trim-track" class="relative h-9 w-full bg-slate-950/90 rounded-xl border border-white/10 overflow-hidden cursor-pointer select-none">
+            <!-- Dim left -->
+            <div id="trim-dim-left" class="absolute top-0 bottom-0 left-0 bg-black/75 pointer-events-none"></div>
+            <!-- Active region -->
+            <div id="trim-region" class="absolute top-0 bottom-0 bg-indigo-500/25 border-y border-indigo-400/50 pointer-events-none"></div>
+            <!-- Dim right -->
+            <div id="trim-dim-right" class="absolute top-0 bottom-0 right-0 bg-black/75 pointer-events-none"></div>
+
+            <!-- Start handle -->
+            <div id="handle-start" class="absolute top-0 bottom-0 w-3.5 bg-indigo-500 hover:bg-indigo-400 cursor-ew-resize rounded-l-md flex items-center justify-center shadow-lg transition-colors z-10" title="Drag to trim start">
+              <div class="w-0.5 h-3 bg-white/90 rounded-full"></div>
+            </div>
+            <!-- End handle -->
+            <div id="handle-end" class="absolute top-0 bottom-0 w-3.5 bg-indigo-500 hover:bg-indigo-400 cursor-ew-resize rounded-r-md flex items-center justify-center shadow-lg transition-colors z-10" title="Drag to trim end">
+              <div class="w-0.5 h-3 bg-white/90 rounded-full"></div>
+            </div>
+
+            <!-- Playhead indicator -->
+            <div id="playhead" class="absolute top-0 bottom-0 w-[2px] bg-white shadow-[0_0_8px_rgba(255,255,255,0.9)] pointer-events-none z-20"></div>
+          </div>
+
+          <!-- Quick Cut Presets & Native FFmpeg Trim Execution -->
+          <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+            <div class="flex items-center gap-1.5">
+              <button id="cut-start-2s" class="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-slate-300 cursor-pointer transition">
+                Cut First 2s
+              </button>
+              <button id="cut-end-3s" class="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-slate-300 cursor-pointer transition">
+                Cut Last 3s
+              </button>
+              <button id="trim-reset" class="px-2.5 py-1 text-[11px] font-medium rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-slate-400 hover:text-slate-200 cursor-pointer transition">
+                Reset
+              </button>
+            </div>
+
+            <button id="apply-trim" class="px-3.5 py-1.5 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white flex items-center gap-1.5 shadow-lg shadow-indigo-600/30 cursor-pointer transition disabled:opacity-50 disabled:cursor-not-allowed">
+              <span id="trim-spinner" hidden class="animate-spin text-xs">⏳</span>
+              <span id="apply-trim-label">✂️ Apply Trim & Save</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Dynamic AI Captions Section -->
+        <div class="pt-2.5 border-t border-white/5 flex flex-col gap-2">
+          <div class="flex items-center justify-between">
+            <label class="flex items-center gap-2 cursor-pointer select-none">
+              <input type="checkbox" id="captions-toggle" checked class="w-4 h-4 rounded text-indigo-600 accent-indigo-500 focus:ring-0 cursor-pointer" />
+              <span class="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
+                <span class="text-amber-400">✨</span> Dynamic Animated Captions
+              </span>
+            </label>
+            <button id="captions-regen" class="text-[11px] text-indigo-400 hover:text-indigo-300 font-medium cursor-pointer">
+              Regenerate
+            </button>
+          </div>
+
+          <!-- Captions Style Presets -->
+          <div id="caption-styles" class="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+            <button data-style="viral_karaoke" class="caption-style-btn px-2.5 py-1.5 rounded-lg border text-xs font-bold flex flex-col items-center gap-0.5 cursor-pointer transition border-indigo-500 bg-indigo-500/20 text-yellow-300">
+              <span>Viral Karaoke</span>
+              <span class="text-[10px] font-normal text-slate-400">Hormozi / Yellow</span>
+            </button>
+            <button data-style="neon_cyber" class="caption-style-btn px-2.5 py-1.5 rounded-lg border border-white/10 bg-white/5 text-xs font-bold flex flex-col items-center gap-0.5 cursor-pointer transition hover:bg-white/10 text-cyan-300">
+              <span>Cyber Neon</span>
+              <span class="text-[10px] font-normal text-slate-400">Electric Glow</span>
+            </button>
+            <button data-style="minimal_clean" class="caption-style-btn px-2.5 py-1.5 rounded-lg border border-white/10 bg-white/5 text-xs font-bold flex flex-col items-center gap-0.5 cursor-pointer transition hover:bg-white/10 text-slate-200">
+              <span>Minimal Clean</span>
+              <span class="text-[10px] font-normal text-slate-400">Soft Backdrop</span>
+            </button>
+            <button data-style="tiktok_punch" class="caption-style-btn px-2.5 py-1.5 rounded-lg border border-white/10 bg-white/5 text-xs font-bold flex flex-col items-center gap-0.5 cursor-pointer transition hover:bg-white/10 text-rose-400">
+              <span>TikTok Punch</span>
+              <span class="text-[10px] font-normal text-slate-400">Bold Magenta</span>
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Action Buttons -->
+      <div id="actions" class="flex flex-wrap justify-center gap-2 pt-1">
+        <button id="folder" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-sm font-extrabold cursor-pointer transition shadow-lg shadow-indigo-600/30">Show in folder</button>
+        <button id="save-as" class="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-sm font-bold cursor-pointer transition">Save a copy…</button>
+        <button id="again" class="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-sm font-bold cursor-pointer transition">New recording</button>
+        <button id="trash" class="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-sm text-slate-300 cursor-pointer transition">Delete</button>
+      </div>
+
+      <p id="path" class="text-[11px] text-slate-500 break-all max-w-lg"></p>
+      <p class="text-xs text-slate-500">Optimized for Instagram Reels, YouTube Shorts, and TikTok.</p>
     </main>
     <script type="module" src="./src/result.ts"></script>
   </body>

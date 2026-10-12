@@ -148,6 +148,42 @@ export class FFmpegManager {
       args.push('-an');
     }
 
+      args.push('-movflags', '+faststart', outputPath);
+
+    await FFmpegManager.executePipeline(args);
+  }
+
+  /**
+   * Trims a recorded video to a precision [startSec, endSec] window using native FFmpeg.
+   */
+  public static async trimVideo(
+    inputPath: string,
+    outputPath: string,
+    startSec: number,
+    endSec: number
+  ): Promise<void> {
+    const duration = Math.max(0.1, endSec - startSec);
+    const hasAudio = await FFmpegManager.hasAudioStream(inputPath);
+
+    const args = [
+      '-y',
+      '-ss', startSec.toFixed(3),
+      '-i', inputPath,
+      '-t', duration.toFixed(3),
+      '-c:v', 'libx264',
+      '-preset', 'veryfast',
+      '-pix_fmt', 'yuv420p',
+      '-b:v', '14M',
+      '-maxrate', '18M',
+      '-bufsize', '28M'
+    ];
+
+    if (hasAudio) {
+      args.push('-c:a', 'aac', '-b:a', '192k');
+    } else {
+      args.push('-an');
+    }
+
     args.push('-movflags', '+faststart', outputPath);
 
     await FFmpegManager.executePipeline(args);

@@ -67,6 +67,8 @@ const api = {
     showInFolder: (id: string) => ipcRenderer.send('result:show', id),
     saveAs: (id: string): Promise<string | null> => ipcRenderer.invoke('result:save-as', id),
     trash: (id: string): Promise<boolean> => ipcRenderer.invoke('result:trash', id),
+    trim: (id: string, startSec: number, endSec: number): Promise<{ meta: SavedRecording; bytes: Uint8Array } | null> =>
+      ipcRenderer.invoke('result:trim', { id, startSec, endSec }),
     recordAgain: () => ipcRenderer.send('result:again')
   }
 };
