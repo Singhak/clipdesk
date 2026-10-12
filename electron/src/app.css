@@ -1,0 +1,49 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #07080c;
+  color: #f8fafc;
+}
+
+/* Overlay windows (control bar, countdown) are transparent */
+body.overlay {
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+}
+
+.drag {
+  -webkit-app-region: drag;
+}
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+.preview-video {
+  display: block;
+  height: min(68vh, 680px);
+  aspect-ratio: 9 / 16;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #000;
+}
+.preview-video.wide {
+  height: auto;
+  width: min(92vw, 900px);
+  aspect-ratio: 16 / 9;
+}
+
+@keyframes rec-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0.6); }
+  70% { box-shadow: 0 0 0 8px rgba(244, 63, 94, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(244, 63, 94, 0); }
+}
+.rec-dot {
+  animation: rec-pulse 1.4s infinite;
+}

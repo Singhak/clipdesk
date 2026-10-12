@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; worker-src 'self' blob:; script-src 'self'" />
+    <title>ReelScreen controls</title>
+  </head>
+  <body class="overlay">
+    <div class="h-screen flex flex-col items-center justify-end px-1.5 pb-1">
+      <div id="pip-container" class="hidden mb-2 rounded-xl overflow-hidden border-2 border-indigo-500 shadow-[0_10px_25px_rgba(0,0,0,0.7)] bg-[#070913]">
+        <img id="pip-img" class="w-[108px] h-[192px] object-cover block" alt="Live 9:16 Preview" />
+        <div class="text-[9px] font-extrabold text-center py-0.5 bg-indigo-600 text-white tracking-widest uppercase">9:16 LIVE</div>
+      </div>
+      <div id="bar" role="toolbar" aria-label="Recording controls" class="flex items-center gap-1.5 px-2 py-1.5 rounded-full bg-[#0a0d16]/95 border-[1.5px] border-indigo-500 text-white shadow-[0_6px_20px_rgba(0,0,0,0.45)]"></div>
+    </div>
+    <script type="module" src="./src/controls.ts"></script>
+  </body>
+</html>
