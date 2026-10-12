@@ -1,4 +1,5 @@
 import { CameraState } from './types';
+import { frameLerp } from './smoothing';
 
 export interface CameraOptions {
   sourceWidth: number;
@@ -20,6 +21,7 @@ export class CameraAgent {
 
   // Active click-focus boost timing
   private clickFocusUntil = 0;
+  private lastUpdate: number | null = null;
 
   constructor(options: CameraOptions) {
     this.sourceWidth = options.sourceWidth || 1920;
@@ -97,9 +99,12 @@ export class CameraAgent {
     // Boost smoothing factor on click focus for immediate cinematic glide
     const effectiveSmoothing = isClickFocusActive ? 0.26 : this.smoothingFactor;
 
-    // Smooth Lerp easing towards target
-    this.currentCenterX += (this.targetCenterX - this.currentCenterX) * effectiveSmoothing;
-    this.currentCenterY += (this.targetCenterY - this.currentCenterY) * effectiveSmoothing;
+    // Smooth Lerp easing towards target, scaled to the time since the last frame so the camera
+    // moves at the same speed at 30, 60 or 144 FPS
+    const alpha = frameLerp(effectiveSmoothing, this.lastUpdate === null ? null : now - this.lastUpdate);
+    this.lastUpdate = now;
+    this.currentCenterX += (this.targetCenterX - this.currentCenterX) * alpha;
+    this.currentCenterY += (this.targetCenterY - this.currentCenterY) * alpha;
 
     // Derived top-left crop position
     const cropX = Math.max(0, Math.min(this.sourceWidth - cropWidth, this.currentCenterX - cropWidth / 2));
@@ -122,6 +127,7 @@ export class CameraAgent {
     this.targetCenterX = this.currentCenterX;
     this.targetCenterY = this.currentCenterY;
     this.clickFocusUntil = 0;
+    this.lastUpdate = null;
   }
 }
 

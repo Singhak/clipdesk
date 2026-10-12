@@ -2,6 +2,7 @@ import './ext.css';
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import {
+  ALL_PAGES,
   CONFIG_KEY,
   DEFAULT_CONFIG,
   ExtLayout,
@@ -87,6 +88,7 @@ const Popup: React.FC = () => {
   const [tab, setTab] = useState<chrome.tabs.Tab | null>(null);
   const [camPerm, setCamPerm] = useState<PermissionStatus>('unknown');
   const [micPerm, setMicPerm] = useState<PermissionStatus>('unknown');
+  const [allPages, setAllPages] = useState(false);
 
   useEffect(() => {
     void chrome.storage.local.get([CONFIG_KEY, STATE_KEY]).then((got) => {
@@ -96,6 +98,7 @@ const Popup: React.FC = () => {
     void chrome.tabs.query({ active: true, currentWindow: true }).then(([t]) => setTab(t ?? null));
     void permission('camera').then(setCamPerm);
     void permission('microphone').then(setMicPerm);
+    void chrome.permissions.contains(ALL_PAGES).then(setAllPages);
     const onChange = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
       if (area === 'local' && changes[STATE_KEY]) setRecState({ ...IDLE_STATE, ...changes[STATE_KEY].newValue });
     };
@@ -116,6 +119,13 @@ const Popup: React.FC = () => {
   const url = tab?.url ?? '';
   const tabCapturable = /^https?:|^file:/.test(url) && !url.startsWith('https://chromewebstore.google.com');
   const needsPermission = (config.camera && camPerm !== 'granted') || (config.mic && micPerm !== 'granted');
+
+  // Site access is asked for straight from the click, as Chrome requires a user gesture for the prompt
+  const toggleAllPages = (on: boolean) => {
+    const done = (ok: boolean) => setAllPages(on ? ok : !ok);
+    if (on) void chrome.permissions.request(ALL_PAGES).then(done, () => done(false));
+    else void chrome.permissions.remove(ALL_PAGES).then(done, () => done(false));
+  };
 
   const start = async () => {
     if (!tab?.id) return;
@@ -197,7 +207,9 @@ const Popup: React.FC = () => {
           <p className="text-[11px] text-slate-400">Best for websites: the reel follows your cursor and zooms where you click.</p>
         )}
         {config.source === 'screen' && (
-          <p className="text-[11px] text-slate-400">Cursor follow works while the pointer is over a web page in Chrome.</p>
+          <p className="text-[11px] text-slate-400">
+            Cursor follow works while the pointer is over a web page in Chrome{allPages ? '.' : ', and only in this tab unless you turn on “Follow on every page” below.'}
+          </p>
         )}
       </section>
 
@@ -241,6 +253,12 @@ const Popup: React.FC = () => {
           hint="They are part of the page, so they can show in the video. Shortcuts: Alt+Shift+P, Alt+Shift+S"
           checked={config.showControls}
           onChange={(showControls) => update({ showControls })}
+        />
+        <Toggle
+          label="Follow on every page"
+          hint="Lets the controls and cursor follow work on pages you open while recording. Chrome asks for site access once; off keeps ClipDesk to this tab."
+          checked={allPages}
+          onChange={toggleAllPages}
         />
       </section>
 

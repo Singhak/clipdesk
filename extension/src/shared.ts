@@ -48,6 +48,12 @@ export const IDLE_STATE: RecState = {
   showControls: true
 };
 
+/**
+ * Optional site access. Without it the controls and pointer tracking run only in the tab the
+ * recording was started from (activeTab); with it they follow the user onto every page.
+ */
+export const ALL_PAGES: chrome.permissions.Permissions = { origins: ['http://*/*', 'https://*/*'] };
+
 export const STATE_KEY = 'recState';
 export const CONFIG_KEY = 'recConfig';
 /** Set by the service worker for the recorder tab to pick up */

@@ -1,6 +1,6 @@
 import { ControlAction, IDLE_STATE, RecState, STATE_KEY, elapsedMs, formatTime, send } from './shared';
 
-// Runs on every page. Dormant until a recording starts, then shows the floating control bar,
+// Injected by the service worker when a recording starts (see injectControls in background.ts). Shows the floating control bar,
 // the 3-2-1 countdown, and reports the pointer so the reel camera can follow it and zoom on clicks.
 
 declare global {

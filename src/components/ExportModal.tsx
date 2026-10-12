@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState, useRef } from 'react';
 import {
   Download,
   CheckCircle,
@@ -15,10 +15,10 @@ import {
 import { InstagramIcon, YoutubeIcon } from './SocialIcons';
 import { LicenseInfo, LayoutMode } from '../core/types';
 import { ExportEngine } from '../core/exportEngine';
-import { VideoTrimmer } from './VideoTrimmer';
+import { CutEditor } from './CutEditor';
+import { remapCaptions, type TimeRange } from '../core/cutList';
 import { CaptionsGenerator } from './CaptionsGenerator';
 import {
-  CaptionEngine,
   CaptionSegment,
   CaptionStyleId,
   CAPTION_STYLES,
@@ -77,24 +77,26 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const shownDuration = fileDuration !== null ? Math.round(fileDuration) : durationSeconds;
   const lostFootage = fileDuration !== null && durationSeconds >= 3 && fileDuration < durationSeconds * 0.6;
 
-  const [mp4Blob, setMp4Blob] = useState<Blob | null>(null);
+  // The converted/cut output, remembered with the edit it was made for
+  const [converted, setConverted] = useState<{ blob: Blob; key: string } | null>(null);
   const [convertProgress, setConvertProgress] = useState<number | null>(null);
   const [convertError, setConvertError] = useState<string | null>(null);
 
-  // Video Trimmer state
-  const [trim, setTrim] = useState<{ startSec: number; endSec: number }>({
-    startSec: 0,
-    endSec: shownDuration || durationSeconds
-  });
+  // Cut editor state: the parts of the recording that are kept, in its own timeline
+  const [kept, setKept] = useState<TimeRange[]>([]);
+  const [cutCount, setCutCount] = useState(0);
+  const handleCutsChange = useCallback((nextKept: TimeRange[], cuts: TimeRange[]) => {
+    setKept(nextKept);
+    setCutCount(cuts.length);
+  }, []);
+  const [previewVideo, setPreviewVideo] = useState<HTMLVideoElement | null>(null);
 
   // Animated Captions state & settings
   const [captionsEnabled, setCaptionsEnabled] = useState(() => Boolean(initialCaptions && initialCaptions.length > 0));
   const [captionStyle, setCaptionStyle] = useState<CaptionStyleId>('viral_karaoke');
   const [captionSettings, setCaptionSettings] = useState<CaptionCustomSettings>(DEFAULT_CAPTION_SETTINGS);
-  const [captionSegments, setCaptionSegments] = useState<CaptionSegment[]>(() => {
-    if (initialCaptions && initialCaptions.length > 0) return initialCaptions;
-    return CaptionEngine.generateSmartCaptions(shownDuration || durationSeconds);
-  });
+  // Start empty: placeholder text must never be burned into a user's video by default
+  const [captionSegments, setCaptionSegments] = useState<CaptionSegment[]>(() => initialCaptions ?? []);
 
   // Burning captions state
   const [isBurningCaptions, setIsBurningCaptions] = useState(false);
@@ -103,18 +105,41 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   const [currentVideoTime, setCurrentVideoTime] = useState(0);
 
-  // Reset any converted result when a new recording arrives
+  // Reset any converted result when a new recording arrives (the cut editor resets with it)
   useEffect(() => {
-    setMp4Blob(null);
+    setConverted(null);
     setConvertError(null);
     setConvertProgress(null);
-    setTrim({ startSec: 0, endSec: shownDuration || durationSeconds });
-  }, [recordedBlob, shownDuration, durationSeconds]);
+  }, [recordedBlob]);
 
-  const exportBlob = mp4Blob ?? recordedBlob;
+  // Precise length for cutting; the rounded one is only for display
+  const sourceDuration = fileDuration ?? durationSeconds;
+  const isTrimmed = cutCount > 0 && kept.length > 0;
+  const trimKey = isTrimmed ? kept.map((r) => `${r.startSec.toFixed(2)}-${r.endSec.toFixed(2)}`).join(',') : 'full';
+  const readyBlob = converted && converted.key === trimKey ? converted.blob : null;
+  const exportBlob = readyBlob ?? recordedBlob;
   const fileExt = ExportEngine.extensionFor(exportBlob);
-  const needsConversion = ExportEngine.extensionFor(recordedBlob) !== 'mp4' && !mp4Blob;
+  const needsConversion = !readyBlob && (isTrimmed || ExportEngine.extensionFor(recordedBlob) !== 'mp4');
   const isConverting = convertProgress !== null;
+
+  /** The file to hand out: the recording, converted to MP4 with the cut parts removed when needed. */
+  const getOutputBlob = async (): Promise<Blob> => {
+    if (!needsConversion) return exportBlob;
+    setConvertError(null);
+    setConvertProgress(0);
+    try {
+      const { convertToMp4 } = await import('../core/mp4Converter');
+      const out = await convertToMp4(
+        recordedBlob,
+        setConvertProgress,
+        isTrimmed ? { ranges: kept, duration: sourceDuration } : null
+      );
+      setConverted({ blob: out, key: trimKey });
+      return out;
+    } finally {
+      setConvertProgress(null);
+    }
+  };
 
   const saveBlob = (blob: Blob, customFilename?: string) => {
     const ext = ExportEngine.extensionFor(blob);
@@ -126,18 +151,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   const handleDownload = async () => {
     if (needsConversion) {
-      setConvertError(null);
-      setConvertProgress(0);
       try {
-        const { convertToMp4 } = await import('../core/mp4Converter');
-        const converted = await convertToMp4(recordedBlob, setConvertProgress);
-        setMp4Blob(converted);
-        saveBlob(converted);
+        saveBlob(await getOutputBlob());
       } catch (e: any) {
         console.error('MP4 conversion failed:', e);
-        setConvertError(e?.message || 'MP4 conversion failed. You can download the WebM instead.');
-      } finally {
-        setConvertProgress(null);
+        setConvertError(e?.message || 'MP4 conversion failed. You can download the original recording instead.');
       }
       return;
     }
@@ -152,9 +170,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     setBurnProgress(0);
     setBurnError(null);
     try {
+      // With cuts, burn onto the cut file and move the captions (timed against the original) with it
+      const source = isTrimmed ? await getOutputBlob() : recordedBlob;
       const burned = await ExportEngine.burnCaptionsToVideo(
-        exportBlob,
-        captionSegments,
+        source,
+        isTrimmed ? remapCaptions(captionSegments, kept) : captionSegments,
         CAPTION_STYLES[captionStyle],
         captionSettings,
         layoutMode,
@@ -174,9 +194,16 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   };
 
   const handleShareVideo = async () => {
+    let outBlob: Blob;
     try {
-      const file = new File([exportBlob], `clipdesk_reel.${fileExt}`, {
-        type: exportBlob.type || 'video/mp4'
+      outBlob = await getOutputBlob();
+    } catch (e: any) {
+      setConvertError(e?.message || 'MP4 conversion failed. You can download the original recording instead.');
+      return;
+    }
+    try {
+      const file = new File([outBlob], `clipdesk_reel.${ExportEngine.extensionFor(outBlob)}`, {
+        type: outBlob.type || 'video/mp4'
       });
       if (typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({
@@ -194,7 +221,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     }
 
     // Direct local save fallback
-    saveBlob(exportBlob);
+    saveBlob(outBlob);
     setShareFeedback('✓ Saved directly to disk!');
     setTimeout(() => setShareFeedback(null), 3000);
   };
@@ -223,7 +250,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     return () => URL.revokeObjectURL(url);
   }, [recordedBlob]);
 
-  const effectiveDuration = Math.max(1, Math.round(trim.endSec - trim.startSec));
+  const effectiveDuration = Math.max(
+    1,
+    Math.round(isTrimmed ? kept.reduce((n, r) => n + r.endSec - r.startSec, 0) : sourceDuration)
+  );
+  const [videoSize, setVideoSize] = useState<{ w: number; h: number } | null>(null);
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 animate-fadeIn">
@@ -256,11 +287,15 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             {videoUrl ? (
               <>
                 <video
+                  ref={setPreviewVideo}
                   src={videoUrl}
                   controls
                   autoPlay
-                  loop
                   onTimeUpdate={(e) => setCurrentVideoTime(e.currentTarget.currentTime)}
+                  onLoadedMetadata={(e) => {
+                    const v = e.currentTarget;
+                    if (v.videoWidth && v.videoHeight) setVideoSize({ w: v.videoWidth, h: v.videoHeight });
+                  }}
                   className="w-full h-full object-cover"
                 />
 
@@ -348,7 +383,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             )}
           </div>
           <span className="text-[11px] font-mono text-slate-400 mt-2">
-            {isWide ? '1920 × 1080 • 30 FPS • Widescreen' : '1080 × 1920 • 60 FPS • HiDPI Vertical'}
+            {videoSize ? `${videoSize.w} × ${videoSize.h}` : isWide ? '1920 × 1080' : '1080 × 1920'}
+            {isWide ? ' • Widescreen' : ' • Vertical'}
           </span>
         </div>
 
@@ -371,7 +407,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             <div className="bg-black/30 p-2 rounded-lg border border-white/5">
               <div className="text-slate-400 text-[10px]">Format</div>
               <div className="font-mono font-bold text-emerald-400 text-sm mt-0.5">
-                {fileExt.toUpperCase()} 1080p
+                {(needsConversion ? 'mp4' : fileExt).toUpperCase()}
               </div>
             </div>
           </div>
@@ -383,12 +419,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             </div>
           )}
 
-          {/* Precision Video Trimmer */}
-          <VideoTrimmer
-            videoUrl={videoUrl}
-            totalDuration={shownDuration}
-            onTrimChange={setTrim}
-          />
+          {/* Cut editor: remove any part of the take, with undo */}
+          <CutEditor video={previewVideo} duration={sourceDuration} onChange={handleCutsChange} />
 
           {/* Dynamic AI Captions Generator */}
           <CaptionsGenerator
@@ -406,7 +438,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               const video = document.querySelector('video');
               if (video) video.currentTime = sec;
             }}
-            recordedBlob={exportBlob}
+            recordedBlob={recordedBlob}
           />
 
           {/* Watermark & Subscription Status */}
@@ -424,7 +456,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 <div className="text-[11px] text-slate-400 mt-0.5">
                   {isPro
                     ? 'Pristine export with zero watermark branding.'
-                    : 'Upgrade to remove watermark and unlock 4K bitrate.'}
+                    : 'Upgrade to remove the watermark and record at a higher bitrate (16 Mbps).'}
                 </div>
               </div>
 
@@ -483,7 +515,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   : isDownloading
                     ? 'Packaging Video...'
                     : needsConversion
-                      ? `Convert & Download ${sizeLabel} MP4`
+                      ? isTrimmed
+                        ? `Cut & Download ${sizeLabel} MP4`
+                        : `Convert & Download ${sizeLabel} MP4`
                       : captionsEnabled && captionSegments.length > 0
                         ? `Download Original (Without Burned Captions)`
                         : `Download ${sizeLabel} ${fileExt.toUpperCase()}`}
@@ -503,7 +537,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
             {needsConversion && !isConverting && (
               <p className="text-[11px] text-slate-400 mt-1 text-center">
-                Your browser recorded WebM. Hardware-accelerated conversion to MP4 runs in your browser.
+                {isTrimmed
+                  ? 'The cut video is re-encoded to MP4 in your browser; long videos can take a while.'
+                  : 'Your browser recorded WebM. Conversion to MP4 runs in your browser (no upload).'}
               </p>
             )}
 
@@ -514,7 +550,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   onClick={() => saveBlob(recordedBlob)}
                   className="underline cursor-pointer"
                 >
-                  Download WebM directly
+                  Download the original recording
                 </button>
               </div>
             )}

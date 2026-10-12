@@ -25,14 +25,7 @@
     "type": "module"
   },
   "permissions": ["tabCapture", "desktopCapture", "storage", "unlimitedStorage", "scripting", "activeTab"],
-  "host_permissions": ["<all_urls>"],
-  "content_scripts": [
-    {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    }
-  ],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
   "commands": {
     "toggle-pause": {
       "suggested_key": { "default": "Alt+Shift+P" },

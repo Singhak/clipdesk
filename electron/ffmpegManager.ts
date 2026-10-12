@@ -1,6 +1,7 @@
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
+import { cutFilterGraph, type TimeRange } from '../src/core/cutList';
 
 export class FFmpegManager {
   private static ffmpegBinaryPath: string | null = null;
@@ -49,11 +50,12 @@ export class FFmpegManager {
 
   public static executePipeline(
     args: string[],
-    onProgress?: (data: string) => void
+    onProgress?: (data: string) => void,
+    cwd?: string
   ): Promise<{ success: boolean; output: string }> {
     return new Promise((resolve, reject) => {
       const binary = FFmpegManager.getBinaryPath();
-      const child = spawn(binary, args);
+      const child = spawn(binary, args, { cwd, windowsHide: true });
 
       let stdout = '';
       let stderr = '';
@@ -154,39 +156,56 @@ export class FFmpegManager {
   }
 
   /**
-   * Trims a recorded video to a precision [startSec, endSec] window using native FFmpeg.
+   * Re-encodes the video, keeping only `keep.ranges` when given and burning in an ASS subtitle script
+   * when `assPath` is given. The script is referenced by its bare file name from its own directory,
+   * which sidesteps filtergraph escaping of Windows paths. onSeconds reports how far into the output
+   * the encode has got.
    */
-  public static async trimVideo(
+  public static async renderEdit(
     inputPath: string,
     outputPath: string,
-    startSec: number,
-    endSec: number
+    options: { keep?: { ranges: TimeRange[]; duration: number }; assPath?: string; onSeconds?: (sec: number) => void }
   ): Promise<void> {
-    const duration = Math.max(0.1, endSec - startSec);
+    const { keep, assPath, onSeconds } = options;
     const hasAudio = await FFmpegManager.hasAudioStream(inputPath);
 
-    const args = [
-      '-y',
-      '-ss', startSec.toFixed(3),
-      '-i', inputPath,
-      '-t', duration.toFixed(3),
+    const chains: string[] = [];
+    let video = '[0:v]';
+    let audio: string | null = hasAudio ? '0:a?' : null;
+    if (keep) {
+      chains.push(cutFilterGraph(keep.ranges, keep.duration, hasAudio));
+      video = '[vout]';
+      audio = hasAudio ? '[aout]' : null;
+    }
+    if (assPath) {
+      chains.push(`${video}ass=${path.basename(assPath)}[vsub]`);
+      video = '[vsub]';
+    }
+
+    const args = ['-y', '-i', inputPath];
+    if (chains.length) args.push('-filter_complex', chains.join(';'), '-map', video);
+    else args.push('-map', '0:v');
+    args.push(
       '-c:v', 'libx264',
       '-preset', 'veryfast',
       '-pix_fmt', 'yuv420p',
       '-b:v', '14M',
       '-maxrate', '18M',
       '-bufsize', '28M'
-    ];
-
-    if (hasAudio) {
-      args.push('-c:a', 'aac', '-b:a', '192k');
-    } else {
-      args.push('-an');
-    }
-
+    );
+    // No audio filters: the voice was already cleaned when the take was saved
+    if (audio) args.push('-map', audio, '-c:a', 'aac', '-b:a', '192k');
+    else args.push('-an');
     args.push('-movflags', '+faststart', outputPath);
 
-    await FFmpegManager.executePipeline(args);
+    await FFmpegManager.executePipeline(
+      args,
+      (data) => {
+        const m = /time=(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(data);
+        if (m && onSeconds) onSeconds(Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]));
+      },
+      assPath ? path.dirname(assPath) : undefined
+    );
   }
 }
 

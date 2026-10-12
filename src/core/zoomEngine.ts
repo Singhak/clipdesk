@@ -1,4 +1,5 @@
 import { ZoomIntensity } from './types';
+import { frameLerp } from './smoothing';
 
 export interface HaloEffect {
   id: string;
@@ -16,6 +17,7 @@ export class ZoomEngine {
   private currentZoom: number = 1.35;
   private zoomTriggerTime: number = 0;
   private activeHalos: HaloEffect[] = [];
+  private lastUpdate: number | null = null;
 
   // Screen Studio timing constants:
   // Attack (snappy punch-in): ~240ms
@@ -87,7 +89,8 @@ export class ZoomEngine {
     }
 
     // Direct, responsive follow without sluggish exponential lag (0.35 lerp gives tactile micro-smoothness)
-    this.currentZoom += (targetZoom - this.currentZoom) * 0.35;
+    this.currentZoom += (targetZoom - this.currentZoom) * frameLerp(0.35, this.lastUpdate === null ? null : now - this.lastUpdate);
+    this.lastUpdate = now;
 
     // Prune expired halos
     this.activeHalos = this.activeHalos.filter((h) => now - h.startTime < h.durationMs);

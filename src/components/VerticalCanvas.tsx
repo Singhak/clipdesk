@@ -124,6 +124,7 @@ export const VerticalCanvas: React.FC<VerticalCanvasProps> = ({
 
     let frameCount = 0;
     let fpsTimer = performance.now();
+    let lastStatsAt = 0;
 
     const scale = output.width / logical.width;
     const render = (now: number) => {
@@ -140,9 +141,14 @@ export const VerticalCanvas: React.FC<VerticalCanvasProps> = ({
       if (webcamVideoElement?.paused && webcamVideoElement.srcObject) void webcamVideoElement.play().catch(() => {});
 
       const stats = compositorRef.current?.render(ctx, logical.width, logical.height, screenSource, webcamSource, now);
-      if (stats) {
+      // The readouts are for humans: refresh them a few times a second, not on every frame,
+      // so React doesn't re-render the whole preview at the frame rate
+      if (stats && now - lastStatsAt >= 250) {
+        lastStatsAt = now;
         setCurrentZoomDisplay(Number(stats.zoom.toFixed(2)));
-        setCameraCoords({ x: Math.round(stats.cropX), y: Math.round(stats.cropY) });
+        const x = Math.round(stats.cropX);
+        const y = Math.round(stats.cropY);
+        setCameraCoords((prev) => (prev.x === x && prev.y === y ? prev : { x, y }));
       }
 
       // Pen strokes: full opacity while drawing, then fade out over 4 seconds

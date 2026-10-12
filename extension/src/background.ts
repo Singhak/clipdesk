@@ -1,4 +1,5 @@
 import {
+  ALL_PAGES,
   CONFIG_KEY,
   IDLE_STATE,
   Message,
@@ -17,16 +18,34 @@ import {
 
 const recorderUrl = chrome.runtime.getURL('recorder.html');
 
-async function injectControlsIntoOpenTabs(): Promise<void> {
-  // Manifest content scripts only reach pages loaded after install; cover tabs that were already open
-  const tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
-  await Promise.all(
-    tabs.map((t) =>
-      t.id === undefined
-        ? undefined
-        : chrome.scripting.executeScript({ target: { tabId: t.id }, files: ['content.js'] }).catch(() => {})
-    )
-  );
+const CONTROLS_SCRIPT_ID = 'clipdesk-controls';
+
+const inject = (tabId: number) =>
+  chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] }).catch(() => {});
+
+/**
+ * Puts the controls and pointer tracking into pages for the length of a recording. With the optional
+ * site access granted they go into every open tab and every page loaded until the recording ends;
+ * without it only into the tab the user started from, which the toolbar click granted via activeTab.
+ */
+async function injectControls(originTabId: number): Promise<void> {
+  if (!(await chrome.permissions.contains(ALL_PAGES))) {
+    await inject(originTabId);
+    return;
+  }
+  const tabs = await chrome.tabs.query({ url: ALL_PAGES.origins });
+  await Promise.all(tabs.map((t) => (t.id === undefined ? undefined : inject(t.id))));
+  await removeControlsScript();
+  await chrome.scripting
+    .registerContentScripts([
+      { id: CONTROLS_SCRIPT_ID, matches: ALL_PAGES.origins!, js: ['content.js'], runAt: 'document_idle', persistAcrossSessions: false }
+    ])
+    .catch(() => {});
+}
+
+async function removeControlsScript(): Promise<void> {
+  const registered = await chrome.scripting.getRegisteredContentScripts({ ids: [CONTROLS_SCRIPT_ID] }).catch(() => []);
+  if (registered.length) await chrome.scripting.unregisterContentScripts({ ids: [CONTROLS_SCRIPT_ID] }).catch(() => {});
 }
 
 async function startRecording(msg: Extract<Message, { type: 'start' }>): Promise<void> {
@@ -43,7 +62,7 @@ async function startRecording(msg: Extract<Message, { type: 'start' }>): Promise
     showControls: msg.config.showControls,
     targetTabId: msg.config.source === 'tab' ? msg.tabId : undefined
   });
-  await injectControlsIntoOpenTabs();
+  await injectControls(msg.tabId);
 
   // The screen picker is a dialog on the recorder tab, so that tab must be in front while it is open.
   // For tab capture there is no picker and the user stays on their page.
@@ -114,7 +133,11 @@ function paintBadge(s: RecState): void {
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes[STATE_KEY]) paintBadge({ ...IDLE_STATE, ...changes[STATE_KEY].newValue });
+  if (area !== 'local' || !changes[STATE_KEY]) return;
+  const next: RecState = { ...IDLE_STATE, ...changes[STATE_KEY].newValue };
+  paintBadge(next);
+  // Stop putting the controls into newly loaded pages once the recording is over
+  if (next.status === 'idle') void removeControlsScript();
 });
 
 // Closing the recorder tab ends the recording; don't leave the bar and badge stuck on "recording"

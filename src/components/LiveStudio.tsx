@@ -347,26 +347,30 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Pass mouse events from desktop feed to the virtual camera
-  const handleDesktopMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+  // Pass mouse events from the desktop feed to the virtual camera, in source pixels. The preview
+  // letterboxes the capture (object-contain), so map through the area the video actually covers.
+  const toSourcePoint = (e: React.MouseEvent<HTMLDivElement>): { x: number; y: number } | null => {
+    const settings = stream?.getVideoTracks()[0]?.getSettings();
+    const srcW = settings?.width || 1920;
+    const srcH = settings?.height || 1080;
     const rect = e.currentTarget.getBoundingClientRect();
-    const nx = (e.clientX - rect.left) / rect.width;
-    const ny = (e.clientY - rect.top) / rect.height;
-    setSimulatedMouse({
-      x: nx * 1920,
-      y: ny * 1080
-    });
+    const scale = Math.min(rect.width / srcW, rect.height / srcH);
+    const drawnW = srcW * scale;
+    const drawnH = srcH * scale;
+    const nx = (e.clientX - rect.left - (rect.width - drawnW) / 2) / drawnW;
+    const ny = (e.clientY - rect.top - (rect.height - drawnH) / 2) / drawnH;
+    if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return null;
+    return { x: nx * srcW, y: ny * srcH };
+  };
+
+  const handleDesktopMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const p = toSourcePoint(e);
+    if (p) setSimulatedMouse(p);
   };
 
   const handleDesktopClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const nx = (e.clientX - rect.left) / rect.width;
-    const ny = (e.clientY - rect.top) / rect.height;
-    setSimulatedMouse({
-      x: nx * 1920,
-      y: ny * 1080,
-      click: true
-    });
+    const p = toSourcePoint(e);
+    if (p) setSimulatedMouse({ ...p, click: true });
   };
 
   return (
@@ -541,8 +545,24 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                 </button>
 
                 <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
-                  <span className="bg-black/50 px-2.5 py-1 rounded-md border border-white/5">1920 × 1080</span>
-                  <span className="text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">60 FPS</span>
+                  {(() => {
+                    // What the browser is actually capturing, not a fixed label
+                    const s = stream?.getVideoTracks()[0]?.getSettings();
+                    return (
+                      <>
+                        {s?.width && s?.height && (
+                          <span className="bg-black/50 px-2.5 py-1 rounded-md border border-white/5">
+                            {s.width} × {s.height}
+                          </span>
+                        )}
+                        {s?.frameRate && (
+                          <span className="text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                            {Math.round(s.frameRate)} FPS
+                          </span>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
             </div>
@@ -574,7 +594,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                     Infinity Mirror Shield Active
                   </h3>
                   <p className="text-xs text-slate-400 max-w-md leading-relaxed mb-4">
-                    Desktop preview is locally muted to eliminate recursive window tunneling. The 9:16 vertical canvas on the right is actively recording your screen at 60 FPS!
+                    Desktop preview is locally muted to eliminate recursive window tunneling. The canvas on the right still receives every frame of your screen.
                   </p>
                   <div className="flex items-center gap-3">
                     <button
@@ -934,7 +954,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
               </div>
               <div>
                 <h3 className="text-lg font-bold">ClipDesk Desktop App</h3>
-                <p className="text-xs text-indigo-300">Native OS Cursor Tracking for Windows & macOS</p>
+                <p className="text-xs text-indigo-300">Native OS Cursor Tracking for Windows</p>
               </div>
             </div>
 

@@ -4,10 +4,12 @@ import type {
   DesktopConfig,
   PointerSample,
   RecState,
+  RecordingExtension,
   SaveRequest,
   SavedRecording,
   SourceInfo
 } from './shared';
+import type { TimeRange } from '../src/core/cutList';
 
 // The only bridge between the desktop pages and the main process. Pages get no Node access.
 
@@ -56,6 +58,8 @@ const api = {
     onWebcamSize: (callback: (size: 'small' | 'medium' | 'large') => void) => listen('recorder:webcam-size', callback),
     onWebcamToggle: (callback: (enabled: boolean) => void) => listen('recorder:webcam-toggle', callback),
     sendPreviewFrame: (dataUrl: string) => ipcRenderer.send('recorder:preview-frame', dataUrl),
+    beginTake: (extension: RecordingExtension): Promise<void> => ipcRenderer.invoke('recorder:begin', extension),
+    writeChunk: (bytes: ArrayBuffer): Promise<void> => ipcRenderer.invoke('recorder:chunk', bytes),
     save: (req: SaveRequest): Promise<SavedRecording> => ipcRenderer.invoke('recorder:save', req),
     fail: (message: string) => ipcRenderer.send('recorder:fail', message),
     discard: () => ipcRenderer.send('recorder:discard')
@@ -67,8 +71,13 @@ const api = {
     showInFolder: (id: string) => ipcRenderer.send('result:show', id),
     saveAs: (id: string): Promise<string | null> => ipcRenderer.invoke('result:save-as', id),
     trash: (id: string): Promise<boolean> => ipcRenderer.invoke('result:trash', id),
-    trim: (id: string, startSec: number, endSec: number): Promise<{ meta: SavedRecording; bytes: Uint8Array } | null> =>
-      ipcRenderer.invoke('result:trim', { id, startSec, endSec }),
+    /** Saves an edited copy keeping only `kept` of the source (all of it restores the original) */
+    cut: (id: string, kept: TimeRange[], duration: number): Promise<SavedRecording | null> =>
+      ipcRenderer.invoke('result:cut', { id, kept, duration }),
+    /** Burns an ASS caption script into a copy of the video, cut to `kept`; resolves to the new file's path */
+    burnCaptions: (id: string, ass: string, kept?: TimeRange[], duration?: number): Promise<string> =>
+      ipcRenderer.invoke('result:burn-captions', { id, ass, kept, duration }),
+    onBurnProgress: (callback: (seconds: number) => void) => listen('result:burn-progress', callback),
     recordAgain: () => ipcRenderer.send('result:again')
   }
 };
@@ -76,3 +85,10 @@ const api = {
 export type ReelApi = typeof api;
 
 contextBridge.exposeInMainWorld('reel', api);
+
+// Uncaught page errors go to the main process log (see electron/diagnostics.ts)
+const reportError = (message: string, stack?: string) => ipcRenderer.send('diag:renderer-error', { message, stack });
+window.addEventListener('error', (e) => reportError(e.message || 'error', e.error instanceof Error ? e.error.stack : undefined));
+window.addEventListener('unhandledrejection', (e) =>
+  reportError(`unhandled rejection: ${e.reason instanceof Error ? e.reason.message : String(e.reason)}`, e.reason instanceof Error ? e.reason.stack : undefined)
+);

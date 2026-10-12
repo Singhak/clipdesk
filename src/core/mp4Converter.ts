@@ -1,4 +1,5 @@
-import type { FFmpeg } from '@ffmpeg/ffmpeg';
+import type { FFmpeg, FFFSType } from '@ffmpeg/ffmpeg';
+import { cutFilterGraph, type TimeRange } from './cutList';
 
 let ffmpegPromise: Promise<FFmpeg> | null = null;
 
@@ -26,36 +27,75 @@ async function loadFFmpeg(): Promise<FFmpeg> {
   return ffmpegPromise;
 }
 
+/** The parts of a recording to keep, and the recording's length */
+export interface KeepPlan {
+  ranges: TimeRange[];
+  duration: number;
+}
+
+/** Whether ffmpeg sees an audio stream; the cut filter graph has to know */
+async function probeHasAudio(ff: FFmpeg, path: string): Promise<boolean> {
+  let found = false;
+  const onLog = ({ message }: { message: string }) => {
+    if (/Stream #.*Audio:/.test(message)) found = true;
+  };
+  ff.on('log', onLog);
+  try {
+    // Exits non-zero because no output is given; the stream list is printed anyway
+    await ff.exec(['-hide_banner', '-i', path]);
+  } catch {
+    // probing only
+  } finally {
+    ff.off('log', onLog);
+  }
+  return found;
+}
+
 /**
- * Converts a recorded WebM blob to H.264/AAC MP4 entirely in the browser.
- * If the input blob is already MP4 (from Chrome 126+ or Safari), returns it immediately.
+ * Converts a recorded video to H.264/AAC MP4 entirely in the browser, keeping only `keep` when
+ * given (cuts anywhere in the video, not just the ends). An MP4 input with no cuts is returned as-is.
  */
 export async function convertToMp4(
   input: Blob,
-  onProgress?: (ratio: number) => void
+  onProgress?: (ratio: number) => void,
+  keep?: KeepPlan | null
 ): Promise<Blob> {
   if (!input || input.size === 0) {
     throw new Error('Input video file is empty or missing.');
   }
 
-  // Fast path: Already an MP4 video file!
-  if (input.type.toLowerCase().includes('mp4')) {
+  const isMp4 = input.type.toLowerCase().includes('mp4');
+  if (isMp4 && !keep) {
     onProgress?.(1);
     return input;
   }
 
   const ff = await loadFFmpeg();
+  // The recording is mounted read-only (WORKERFS) rather than copied into the wasm heap, so ffmpeg
+  // reads it from the Blob as it goes and a long take doesn't need its full size in memory twice over
+  const inDir = '/input';
+  const inName = isMp4 ? 'in.mp4' : 'in.webm';
+  const inPath = `${inDir}/${inName}`;
   const handler = ({ progress }: { progress: number }) =>
     onProgress?.(Math.min(1, Math.max(0, progress)));
   ff.on('progress', handler);
 
   try {
-    const inputBytes = new Uint8Array(await input.arrayBuffer());
-    await ff.writeFile('in.webm', inputBytes);
+    await ff.createDir(inDir).catch(() => {});
+    await ff.mount('WORKERFS' as FFFSType, { blobs: [{ name: inName, data: input }] }, inDir);
+
+    // Frame-accurate cuts: each kept piece is trimmed from the decoded stream and the pieces joined
+    let cutArgs: string[] = [];
+    if (keep) {
+      const audio = await probeHasAudio(ff, inPath);
+      cutArgs = ['-filter_complex', cutFilterGraph(keep.ranges, keep.duration, audio), '-map', '[vout]'];
+      if (audio) cutArgs.push('-map', '[aout]');
+    }
 
     // Run ultrafast x264 transcode with yuv420p for 100% compatibility with Reels, Shorts, and TikTok
     const code = await ff.exec([
-      '-i', 'in.webm',
+      '-i', inPath,
+      ...cutArgs,
       '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
       '-r', '30',
       '-c:a', 'aac', '-b:a', '160k',
@@ -76,7 +116,7 @@ export async function convertToMp4(
     );
   } finally {
     ff.off('progress', handler);
-    await ff.deleteFile('in.webm').catch(() => {});
+    await ff.unmount(inDir).catch(() => {});
     await ff.deleteFile('out.mp4').catch(() => {});
   }
 }

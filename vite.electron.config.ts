@@ -10,6 +10,10 @@ export default defineConfig({
   base: './',
   publicDir: resolve(__dirname, 'electron/public'),
   plugins: [tailwindcss(), react()],
+  // The Whisper worker lazy-loads Transformers.js; only ES module workers can code-split
+  worker: { format: 'es' },
+  // Pre-bundling rewrites ffmpeg.wasm's internal worker URL and conversions then never start in dev
+  optimizeDeps: { exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'] },
   build: {
     outDir: resolve(__dirname, 'dist-electron/renderer'),
     emptyOutDir: true,

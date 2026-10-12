@@ -9,6 +9,7 @@ import {
   CAPTION_POSITION_PRESETS,
   CAPTION_SIZE_PRESETS,
   CAPTION_BG_PRESETS,
+  CAPTION_STYLES,
   generateSegmentsFromText,
   colorWithAlpha,
   type CaptionPositionPreset,
@@ -17,6 +18,8 @@ import {
   type CaptionAlignment
 } from '../../src/core/captionEngine';
 import { formatTime } from '../shared';
+import { CutTimeline } from '../../src/components/cutTimeline';
+import { cutsFromKept, remapCaptions, type TimeRange } from '../../src/core/cutList';
 
 const reel = window.reel;
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -41,7 +44,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  let { meta, bytes } = got;
+  let { meta } = got;
+  const { bytes } = got;
   let activeUrl = '';
   const video = $<HTMLVideoElement>('video');
   const wide = meta.layout === 'widescreen';
@@ -57,14 +61,17 @@ async function main(): Promise<void> {
     return blob;
   }
 
-  let currentBlob = loadVideoBlob(bytes, meta.path);
-  let totalDuration = (await ExportEngine.probeDuration(currentBlob)) ?? meta.timerMs / 1000;
-  if (totalDuration <= 0) totalDuration = 1;
+  // The editor always shows the untouched take (main sends the source even after an edit was saved)
+  const currentBlob = loadVideoBlob(bytes, meta.sourcePath ?? meta.path);
+  const probed = (await ExportEngine.probeDuration(currentBlob)) ?? meta.timerMs / 1000;
+  const totalDuration = probed > 0 ? probed : 1;
+  const lengthOf = (ranges: TimeRange[]) => ranges.reduce((n, r) => n + r.endSec - r.startSec, 0);
 
   function updateMetaDisplay() {
     const ext = meta.path.split('.').pop()!.toUpperCase();
+    const length = meta.kept ? lengthOf(meta.kept) : totalDuration;
     $('title').textContent = wide ? 'Your video is ready' : 'Your reel is ready';
-    $('meta').textContent = `${wide ? '1920 × 1080' : '1080 × 1920'} · ${formatTime(totalDuration * 1000)} · ${ext} · ${(meta.size / 1e6).toFixed(1)} MB`;
+    $('meta').textContent = `${wide ? '1920 × 1080' : '1080 × 1920'} · ${formatTime(length * 1000)} · ${ext} · ${(meta.size / 1e6).toFixed(1)} MB`;
     $('path').textContent = `Saved to ${meta.path}`;
   }
   updateMetaDisplay();
@@ -108,16 +115,7 @@ async function main(): Promise<void> {
     }
   }
 
-  playPauseBtn.addEventListener('click', () => {
-    if (video.paused) {
-      if (video.currentTime >= trimEnd || video.currentTime < trimStart) {
-        video.currentTime = trimStart;
-      }
-      video.play().catch(() => {});
-    } else {
-      video.pause();
-    }
-  });
+  playPauseBtn.addEventListener('click', () => timeline.togglePlay());
 
   video.addEventListener('play', updatePlayBtn);
   video.addEventListener('pause', updatePlayBtn);
@@ -126,181 +124,124 @@ async function main(): Promise<void> {
   window.addEventListener('keydown', (e) => {
     if (e.code === 'Space' && (e.target === document.body || e.target === video)) {
       e.preventDefault();
-      if (video.paused) {
-        if (video.currentTime >= trimEnd || video.currentTime < trimStart) {
-          video.currentTime = trimStart;
-        }
-        video.play().catch(() => {});
-      } else {
-        video.pause();
-      }
+      timeline.togglePlay();
     }
   });
 
   // ==========================================
-  // 2. Timeline Trimmer
+  // 2. Cut editor
   // ==========================================
-  let trimStart = 0;
-  let trimEnd = totalDuration;
+  // Cuts are kept as an edit of the source and only rendered on save, so undo works until then and
+  // a saved edit can be changed again later.
+  const cutState = $('cut-state');
+  const applyCutsBtn = $<HTMLButtonElement>('apply-cuts');
+  const cutSpinner = $('cut-spinner');
+  const applyCutsLabel = $('apply-cuts-label');
+  /** What the file on disk keeps */
+  let savedKept: TimeRange[] = meta.kept ?? [{ startSec: 0, endSec: totalDuration }];
+  let savingCuts = false;
 
-  const trimTrack = $('trim-track');
-  const trimDimLeft = $('trim-dim-left');
-  const trimRegion = $('trim-region');
-  const trimDimRight = $('trim-dim-right');
-  const handleStart = $('handle-start');
-  const handleEnd = $('handle-end');
-  const playhead = $('playhead');
+  const sameRanges = (a: TimeRange[], b: TimeRange[]) =>
+    a.length === b.length &&
+    a.every((r, i) => Math.abs(r.startSec - b[i].startSec) < 1e-3 && Math.abs(r.endSec - b[i].endSec) < 1e-3);
 
-  const timeStartEl = $('trim-time-start');
-  const timeEndEl = $('trim-time-end');
-  const timeSpanEl = $('trim-time-span');
-
-  function updateTrimmerUI() {
-    const dur = Math.max(0.1, totalDuration);
-    const startPct = Math.max(0, Math.min(100, (trimStart / dur) * 100));
-    const endPct = Math.max(0, Math.min(100, (trimEnd / dur) * 100));
-
-    handleStart.style.left = `${startPct}%`;
-    handleEnd.style.left = `${endPct}%`;
-
-    trimDimLeft.style.width = `${startPct}%`;
-    trimRegion.style.left = `${startPct}%`;
-    trimRegion.style.width = `${Math.max(0, endPct - startPct)}%`;
-    trimDimRight.style.left = `${endPct}%`;
-    trimDimRight.style.width = `${100 - endPct}%`;
-
-    timeStartEl.textContent = formatSubSec(trimStart);
-    timeEndEl.textContent = formatSubSec(trimEnd);
-    timeSpanEl.textContent = formatSubSec(Math.max(0, trimEnd - trimStart));
-  }
-  updateTrimmerUI();
-
-  let isDraggingStart = false;
-  let isDraggingEnd = false;
-
-  function getTimeFromTrackEvent(e: MouseEvent): number {
-    const rect = trimTrack.getBoundingClientRect();
-    const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
-    const pct = x / rect.width;
-    return pct * totalDuration;
+  function updateCutState(kept: TimeRange[]) {
+    const dirty = !sameRanges(kept, savedKept);
+    applyCutsBtn.disabled = !dirty || savingCuts;
+    cutState.textContent = dirty ? 'Unsaved edits' : meta.sourcePath ? 'Edited video saved' : '';
   }
 
-  handleStart.addEventListener('mousedown', (e) => {
-    e.stopPropagation();
-    isDraggingStart = true;
+  const timeline = new CutTimeline($('cut-editor'), video, {
+    onChange: (_cuts, kept) => updateCutState(kept),
+    notify: showToast
   });
+  timeline.setDuration(totalDuration, meta.kept ? cutsFromKept(meta.kept, totalDuration) : []);
 
-  handleEnd.addEventListener('mousedown', (e) => {
-    e.stopPropagation();
-    isDraggingEnd = true;
-  });
-
-  window.addEventListener('mousemove', (e) => {
-    if (!isDraggingStart && !isDraggingEnd) return;
-    const t = getTimeFromTrackEvent(e);
-
-    if (isDraggingStart) {
-      trimStart = Math.max(0, Math.min(trimEnd - 0.2, t));
-      video.currentTime = trimStart;
-    } else if (isDraggingEnd) {
-      trimEnd = Math.max(trimStart + 0.2, Math.min(totalDuration, t));
-      video.currentTime = trimEnd;
-    }
-    updateTrimmerUI();
-  });
-
-  window.addEventListener('mouseup', () => {
-    isDraggingStart = false;
-    isDraggingEnd = false;
-  });
-
-  trimTrack.addEventListener('click', (e) => {
-    if (isDraggingStart || isDraggingEnd) return;
-    const t = getTimeFromTrackEvent(e);
-    video.currentTime = Math.max(trimStart, Math.min(trimEnd, t));
-  });
-
-  $('cut-start-2s').addEventListener('click', () => {
-    trimStart = Math.min(trimEnd - 0.5, trimStart + 2);
-    video.currentTime = trimStart;
-    updateTrimmerUI();
-  });
-
-  $('cut-end-3s').addEventListener('click', () => {
-    trimEnd = Math.max(trimStart + 0.5, trimEnd - 3);
-    video.currentTime = trimEnd;
-    updateTrimmerUI();
-  });
-
-  $('trim-reset').addEventListener('click', () => {
-    trimStart = 0;
-    trimEnd = totalDuration;
-    video.currentTime = 0;
-    updateTrimmerUI();
-  });
-
-  const applyTrimBtn = $<HTMLButtonElement>('apply-trim');
-  const trimSpinner = $('trim-spinner');
-  const applyTrimLabel = $('apply-trim-label');
-
-  applyTrimBtn.addEventListener('click', async () => {
-    if (trimStart <= 0.05 && trimEnd >= totalDuration - 0.05) {
-      showToast('⚠️ No trim changes to apply.');
-      return;
-    }
-
-    applyTrimBtn.disabled = true;
-    trimSpinner.hidden = false;
-    applyTrimLabel.textContent = 'Trimming with native FFmpeg…';
-
+  applyCutsBtn.addEventListener('click', async () => {
+    const kept = timeline.keptRanges;
+    savingCuts = true;
+    updateCutState(kept);
+    cutSpinner.hidden = false;
+    applyCutsLabel.textContent = 'Saving with native FFmpeg…';
     try {
-      const trimmed = await reel.result.trim(id, trimStart, trimEnd);
-      if (!trimmed) {
-        showToast('❌ Trim processing failed. Check logs.');
+      const updated = await reel.result.cut(id, kept, totalDuration);
+      if (!updated) {
+        showToast('❌ Saving the edit failed. Check logs.');
         return;
       }
-
-      meta = trimmed.meta;
-      bytes = trimmed.bytes;
-      currentBlob = loadVideoBlob(bytes, meta.path);
-      totalDuration = (await ExportEngine.probeDuration(currentBlob)) ?? meta.timerMs / 1000;
-      trimStart = 0;
-      trimEnd = totalDuration;
-
+      meta = updated;
+      savedKept = kept;
       updateMetaDisplay();
-      updateTrimmerUI();
-      segments = CaptionEngine.generateSmartCaptions(totalDuration);
-      renderSegmentsList();
-      renderActiveCaption();
-
-      showToast(`✅ Trimmed to ${formatSubSec(totalDuration)} and saved to disk with native FFmpeg!`);
-      video.play().catch(() => {});
+      showToast(
+        meta.kept ? `✅ Saved the edited video (${formatSubSec(lengthOf(kept))})` : '✅ Back to the original recording'
+      );
     } catch (err) {
-      console.error('Trim error:', err);
-      showToast('❌ Error during trimming.');
+      console.error('Cut error:', err);
+      showToast('❌ Error while saving the edit.');
     } finally {
-      applyTrimBtn.disabled = false;
-      trimSpinner.hidden = true;
-      applyTrimLabel.textContent = '✂️ Apply Trim & Save';
+      savingCuts = false;
+      cutSpinner.hidden = true;
+      applyCutsLabel.textContent = 'Save edited video';
+      updateCutState(timeline.keptRanges);
     }
   });
 
   // ==========================================
   // 3. Dynamic AI Captions Studio (Desktop)
   // ==========================================
-  let captionsEnabled = true;
+  // Off and empty until the user adds captions: nothing placeholder ends up in an export
+  let captionsEnabled = false;
   let currentCaptionStyle: CaptionStyleId = 'viral_karaoke';
   let captionSettings: CaptionCustomSettings = { ...DEFAULT_CAPTION_SETTINGS };
-  let segments: CaptionSegment[] = CaptionEngine.generateSmartCaptions(totalDuration);
+  let segments: CaptionSegment[] = [];
 
   const captionsToggle = $<HTMLInputElement>('captions-toggle');
   const captionBox = $('caption-box');
   const captionsOverlay = $('captions-overlay');
 
-  captionsToggle.addEventListener('change', () => {
-    captionsEnabled = captionsToggle.checked;
-    captionsOverlay.style.display = captionsEnabled ? 'flex' : 'none';
-    if (!captionsEnabled) captionBox.innerHTML = '';
+  function setCaptionsEnabled(on: boolean) {
+    captionsEnabled = on;
+    captionsToggle.checked = on;
+    captionsOverlay.style.display = on ? 'flex' : 'none';
+    if (!on) captionBox.innerHTML = '';
+    updateExportButton();
+  }
+
+  captionsToggle.addEventListener('change', () => setCaptionsEnabled(captionsToggle.checked));
+  captionsOverlay.style.display = 'none';
+
+  // Export with captions: libass burns the same styling the preview shows, in a native ffmpeg pass
+  const exportCaptionsBtn = $<HTMLButtonElement>('export-captions');
+  function updateExportButton() {
+    exportCaptionsBtn.hidden = !captionsEnabled || segments.length === 0;
+  }
+  reel.result.onBurnProgress((sec) => {
+    const pct = Math.min(99, Math.round((sec / Math.max(0.1, lengthOf(timeline.keptRanges))) * 100));
+    exportCaptionsBtn.textContent = `Burning captions… ${pct}%`;
+  });
+  exportCaptionsBtn.addEventListener('click', async () => {
+    exportCaptionsBtn.disabled = true;
+    exportCaptionsBtn.textContent = 'Burning captions…';
+    try {
+      const w = video.videoWidth || (wide ? 1920 : 1080);
+      const h = video.videoHeight || (wide ? 1080 : 1920);
+      // Captions are timed against the source; with cuts they move onto the cut timeline
+      const cut = timeline.cuts.length > 0;
+      const kept = timeline.keptRanges;
+      const lines = cut ? remapCaptions(segments, kept) : segments;
+      const ass = CaptionEngine.toASS(lines, CAPTION_STYLES[currentCaptionStyle], captionSettings, w, h);
+      const out = cut
+        ? await reel.result.burnCaptions(id, ass, kept, totalDuration)
+        : await reel.result.burnCaptions(id, ass);
+      $('path').textContent = `Saved to ${out}`;
+      showToast('✅ Exported a copy with burned-in captions');
+    } catch (err) {
+      console.error('Caption export failed:', err);
+      showToast('❌ Caption export failed. Check logs.');
+    } finally {
+      exportCaptionsBtn.disabled = false;
+      exportCaptionsBtn.textContent = 'Export with captions';
+    }
   });
 
   // Module Tabs
@@ -337,6 +278,7 @@ async function main(): Promise<void> {
     const list = $('segments-list');
     const countLabel = $('segments-count-label');
     countLabel.textContent = `Transcript Segments (${segments.length})`;
+    updateExportButton();
     list.innerHTML = '';
 
     if (segments.length === 0) {
@@ -424,6 +366,7 @@ async function main(): Promise<void> {
 
     renderSegmentsList();
     renderActiveCaption();
+    setCaptionsEnabled(true);
     showToast('✓ Caption line added!');
   });
 
@@ -448,15 +391,9 @@ async function main(): Promise<void> {
       renderActiveCaption();
       scriptDrawer.hidden = true;
       textScript.value = '';
+      setCaptionsEnabled(true);
       showToast(`✓ Generated ${gen.length} captions from script!`);
     }
-  });
-
-  $('captions-regen').addEventListener('click', () => {
-    segments = CaptionEngine.generateSmartCaptions(totalDuration);
-    renderSegmentsList();
-    renderActiveCaption();
-    showToast('✨ Captions refreshed for video duration.');
   });
 
   $('btn-clear-captions').addEventListener('click', () => {
@@ -465,101 +402,40 @@ async function main(): Promise<void> {
     renderActiveCaption();
   });
 
-  // --- TAB 2: Web Speech API Dictation ---
-  let isDictating = false;
-  let speechRec: any = null;
-  const btnDictate = $('btn-desktop-dictate');
-  const micIcon = $('mic-icon');
-  const micLabel = $('mic-label');
-  const interimBubble = $('interim-bubble');
-  const selectLang = $('select-speech-lang') as HTMLSelectElement;
+  // --- TAB 2: On-device transcription (Whisper in a worker) ---
+  const selectLang = $<HTMLSelectElement>('select-speech-lang');
+  const btnTranscribe = $<HTMLButtonElement>('btn-transcribe');
+  const transcribeStatus = $('transcribe-status');
 
-  btnDictate.addEventListener('click', () => {
-    if (isDictating) {
-      if (speechRec) {
-        try {
-          speechRec.stop();
-        } catch {}
-        speechRec = null;
-      }
-      isDictating = false;
-      micIcon.textContent = '🎙️';
-      micLabel.textContent = 'Start Voice Dictation';
-      btnDictate.className = 'p-4 rounded-full bg-amber-500 hover:bg-amber-400 text-black shadow-xl shadow-amber-500/25 transition-transform hover:scale-105 cursor-pointer';
-      interimBubble.hidden = true;
-      return;
-    }
-
-    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRec) {
-      showToast('❌ Web Speech API not supported in this environment.');
-      return;
-    }
-
+  btnTranscribe.addEventListener('click', async () => {
+    btnTranscribe.disabled = true;
+    transcribeStatus.hidden = false;
+    transcribeStatus.textContent = 'Preparing audio…';
     try {
-      speechRec = new SpeechRec();
-      speechRec.continuous = true;
-      speechRec.interimResults = true;
-      speechRec.lang = selectLang.value || 'en-US';
-
-      speechRec.onstart = () => {
-        isDictating = true;
-        micIcon.textContent = '🛑';
-        micLabel.textContent = 'Listening… Click to Stop';
-        btnDictate.className = 'p-4 rounded-full bg-rose-500 text-white shadow-2xl shadow-rose-500/50 scale-105 animate-pulse cursor-pointer';
-        interimBubble.hidden = false;
-        interimBubble.textContent = 'Listening for speech…';
-      };
-
-      speechRec.onresult = (event: any) => {
-        let interim = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const res = event.results[i];
-          const transcript = res[0].transcript.trim();
-          if (res.isFinal && transcript) {
-            const lastSeg = segments[segments.length - 1];
-            const segStart = lastSeg ? lastSeg.endSec + 0.1 : Math.max(0, video.currentTime - 1.5);
-            const segEnd = Math.min(totalDuration, segStart + 2.5);
-            const wordsRaw = transcript.split(/\s+/).filter(Boolean);
-            const step = (segEnd - segStart) / Math.max(1, wordsRaw.length);
-            const words = wordsRaw.map((w: string, idx: number) => ({
-              word: w,
-              startSec: segStart + idx * step,
-              endSec: segStart + (idx + 1) * step
-            }));
-            segments.push({
-              id: `speech_${Date.now()}_${i}`,
-              text: transcript,
-              startSec: segStart,
-              endSec: segEnd,
-              words
-            });
-            renderSegmentsList();
-            renderActiveCaption();
-          } else {
-            interim += transcript + ' ';
-          }
+      const lang = selectLang.value;
+      const result = await CaptionEngine.transcribeWithLocalWhisper({
+        blob: currentBlob,
+        language: lang,
+        model: lang === 'en' ? 'Xenova/whisper-tiny.en' : 'Xenova/whisper-tiny',
+        onProgress: ({ status }) => {
+          transcribeStatus.textContent = status;
         }
-        if (interim) interimBubble.textContent = `Transcribing: "${interim.trim()}"`;
-      };
-
-      speechRec.onerror = (e: any) => {
-        console.warn('Speech error:', e);
-        if (e.error !== 'no-speech') showToast(`Speech notice: ${e.error}`);
-      };
-
-      speechRec.onend = () => {
-        isDictating = false;
-        micIcon.textContent = '🎙️';
-        micLabel.textContent = 'Start Voice Dictation';
-        btnDictate.className = 'p-4 rounded-full bg-amber-500 hover:bg-amber-400 text-black shadow-xl shadow-amber-500/25 transition-transform hover:scale-105 cursor-pointer';
-        interimBubble.hidden = true;
-      };
-
-      speechRec.start();
-    } catch (err: any) {
-      showToast('Could not start speech recognition.');
-      isDictating = false;
+      });
+      if (result.length === 0) {
+        transcribeStatus.textContent = 'No speech was found in this recording.';
+        return;
+      }
+      segments = result;
+      setCaptionsEnabled(true);
+      renderSegmentsList();
+      renderActiveCaption();
+      transcribeStatus.textContent = `Done: ${result.length} caption lines. Edit them in the Type Captions tab.`;
+      showToast(`✓ Transcribed ${result.length} caption lines`);
+    } catch (err) {
+      console.error('Transcription failed:', err);
+      transcribeStatus.textContent = `Transcription failed: ${err instanceof Error ? err.message : String(err)}`;
+    } finally {
+      btnTranscribe.disabled = false;
     }
   });
 
@@ -740,25 +616,8 @@ async function main(): Promise<void> {
     }
   }
 
-  // Video Time Update: Trimmer Loop & Playhead & Captions
-  video.addEventListener('timeupdate', () => {
-    const cur = video.currentTime;
-
-    // Loop within trim region during playback
-    if (cur >= trimEnd) {
-      video.currentTime = trimStart;
-    } else if (cur < trimStart && !video.paused) {
-      video.currentTime = trimStart;
-    }
-
-    // Playhead position
-    const dur = Math.max(0.1, totalDuration);
-    const pct = Math.max(0, Math.min(100, (cur / dur) * 100));
-    playhead.style.left = `${pct}%`;
-
-    // Render captions
-    renderActiveCaption();
-  });
+  // Captions follow playback; the cut timeline moves its own playhead and skips cut parts
+  video.addEventListener('timeupdate', renderActiveCaption);
 
   // ==========================================
   // 4. Standard Action Buttons
@@ -786,9 +645,8 @@ async function main(): Promise<void> {
     if (await reel.result.trash(id)) window.close();
   });
 
-  // Auto-play preview within trim bounds
-  video.currentTime = trimStart;
-  video.play().catch(() => {});
+  // Auto-play the preview, skipping anything cut
+  timeline.togglePlay();
 }
 
 void main();

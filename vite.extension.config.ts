@@ -10,6 +10,8 @@ export default defineConfig({
   base: './',
   publicDir: resolve(__dirname, 'extension/public'),
   plugins: [tailwindcss(), react()],
+  // The Whisper worker lazy-loads Transformers.js; only ES module workers can code-split
+  worker: { format: 'es' },
   build: {
     outDir: resolve(__dirname, 'dist-extension'),
     emptyOutDir: true,

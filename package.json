@@ -9,12 +9,15 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "build:ext": "tsc && vite build -c vite.extension.config.ts && vite build -c vite.content.config.ts",
     "build:desktop": "tsc && vite build -c vite.electron.config.ts && vite build -c vite.electron-main.config.ts",
     "desktop": "npm run build:desktop && node scripts/run-electron.mjs",
     "desktop:start": "node scripts/run-electron.mjs",
     "dist:desktop": "npm run build:desktop && electron-builder --win",
     "dist:win": "npm run build:desktop && electron-builder --win",
+    "release:win": "npm run build:desktop && electron-builder --win --publish always",
     "package:downloads": "node scripts/package-downloads.mjs",
     "package:all": "npm run build && npm run build:desktop && npm run build:ext && node scripts/package-downloads.mjs"
   },
@@ -25,6 +28,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "@xenova/transformers": "^2.17.2",
     "clsx": "^2.1.1",
+    "electron-updater": "^6.8.9",
     "ffmpeg-static": "^5.3.0",
     "lucide-react": "^1.16.0",
     "react": "^19.0.0",
@@ -41,7 +45,8 @@
     "electron": "^44.7.0",
     "electron-builder": "^26.15.3",
     "typescript": "^5.7.3",
-    "vite": "^6.1.0"
+    "vite": "^6.1.0",
+    "vitest": "^3.2.4"
   },
   "author": "ClipDesk",
   "build": {
@@ -112,6 +117,13 @@
       "enableEmbeddedAsarIntegrityValidation": true,
       "onlyLoadAppFromAsar": true,
       "enableCookieEncryption": true
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Singhak",
+        "repo": "clipdesk"
+      }
+    ]
   }
 }

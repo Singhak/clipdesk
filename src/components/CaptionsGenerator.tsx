@@ -734,7 +734,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                         </span>
                       </div>
                       <p className="text-[10px] text-slate-400 mt-0.5">
-                        Whisper.wasm · 100% On-Device & Private
+                        Runs in your browser · audio stays on device (~40 MB model download once)
                       </p>
                     </button>
 
@@ -850,7 +850,8 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                       className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 font-mono"
                     />
                     <p className="text-[10px] text-slate-500">
-                      Saved in your browser localStorage only. Never sent to any 3rd party backend.
+                      Stored in this browser only. When you transcribe, the key and your audio are sent
+                      directly to {whisperProvider === 'groq' ? 'Groq' : 'OpenAI'}, not to ClipDesk.
                     </p>
                   </div>
                 )}
@@ -1077,7 +1078,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                         className="flex items-center gap-1 text-[11px] text-amber-400 hover:text-amber-300 cursor-pointer"
                       >
                         <Sparkles className="w-3 h-3" />
-                        <span>Auto-Generate Default Lines</span>
+                        <span>Insert Placeholder Outline</span>
                       </button>
                     ) : (
                       <button
@@ -1100,7 +1101,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                         onClick={handleGenerateSmartDefaults}
                         className="text-amber-400 underline cursor-pointer hover:text-amber-300"
                       >
-                        Auto-generate starter phrases
+                        Insert placeholder outline lines
                       </button>{' '}
                       or type above.
                     </div>
@@ -1209,7 +1210,9 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                   </span>
                 </div>
                 <span className="text-[10px] text-slate-400">
-                  {isSpeechSupported ? 'Chrome · Edge · Safari' : 'Please type manually'}
+                  {isSpeechSupported
+                    ? 'Uses your browser\'s speech service (Chrome sends audio to Google)'
+                    : 'Please type manually'}
                 </span>
               </div>
 

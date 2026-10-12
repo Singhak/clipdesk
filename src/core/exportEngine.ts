@@ -79,8 +79,15 @@ export class ExportEngine {
   public static startRecordingCanvas(
     canvas: HTMLCanvasElement,
     audioStream: MediaStream | null,
-    settings: ExportSettings
+    settings: ExportSettings,
+    sink?: {
+      /** Receives every encoded chunk in order, e.g. to append it to a file on disk */
+      onChunk: (chunk: Blob) => void;
+      /** Keep chunks in memory for the blob returned by stop(). False: stop() returns an empty blob. */
+      keepInMemory: boolean;
+    }
   ): {
+    mimeType: string;
     stop: () => Promise<Blob>;
     pause: () => void;
     resume: () => void;
@@ -109,18 +116,24 @@ export class ExportEngine {
       videoBitsPerSecond: settings.includeWatermark ? 6000000 : 16000000 // Free: 6Mbps, Pro: 16Mbps
     });
 
-    const sessionId = `rec_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    void recoveryService.startSession(sessionId, {
-      mimeType,
-      layoutMode: settings.layout,
-      templateId: settings.templateId
-    });
+    // A caller that streams chunks to disk has its own recovery; IndexedDB would be a second copy
+    const keepInMemory = sink?.keepInMemory ?? true;
+    const useRecovery = !sink;
+    if (useRecovery) {
+      const sessionId = `rec_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      void recoveryService.startSession(sessionId, {
+        mimeType,
+        layoutMode: settings.layout,
+        templateId: settings.templateId
+      });
+    }
 
     const chunks: Blob[] = [];
     recorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) {
-        chunks.push(e.data);
-        void recoveryService.saveChunk(e.data);
+        if (keepInMemory) chunks.push(e.data);
+        sink?.onChunk(e.data);
+        if (useRecovery) void recoveryService.saveChunk(e.data);
       }
     };
 
@@ -128,8 +141,12 @@ export class ExportEngine {
 
     const makeBlob = () => new Blob(chunks, { type: mimeType.split(';')[0] });
     let stopPromise: Promise<Blob> | null = null;
+    const finalizeRecovery = () => {
+      if (useRecovery) void recoveryService.finalizeSession(0);
+    };
 
     return {
+      mimeType: mimeType.split(';')[0],
       pause: () => {
         setPaused(true);
         if (recorder.state === 'recording') recorder.pause();
@@ -145,13 +162,13 @@ export class ExportEngine {
           stopPromise = new Promise<Blob>((resolve) => {
             const handleStop = () => {
               const finalBlob = makeBlob();
-              void recoveryService.finalizeSession(0);
+              finalizeRecovery();
               resolve(finalBlob);
             };
 
             if (recorder.state === 'inactive') {
               const finalBlob = makeBlob();
-              void recoveryService.finalizeSession(0);
+              finalizeRecovery();
               resolve(finalBlob);
               return;
             }
@@ -171,7 +188,7 @@ export class ExportEngine {
               recorder.stop();
             } catch {
               const finalBlob = makeBlob();
-              void recoveryService.finalizeSession(0);
+              finalizeRecovery();
               resolve(finalBlob);
             }
           });
@@ -314,7 +331,8 @@ export class ExportEngine {
     style: CaptionStyleConfig,
     customSettings: CaptionCustomSettings,
     layoutMode: LayoutMode,
-    onProgress?: (ratio: number) => void
+    onProgress?: (ratio: number) => void,
+    range?: { startSec: number; endSec: number }
   ): Promise<Blob> {
     return new Promise((resolve, reject) => {
       const isWide = layoutMode === 'widescreen';
@@ -343,7 +361,11 @@ export class ExportEngine {
       }
 
       video.onloadedmetadata = () => {
-        const duration = video.duration || 1;
+        // WebM from MediaRecorder often reports Infinity; fall back to the requested range
+        const fileDuration = Number.isFinite(video.duration) ? video.duration : range?.endSec ?? 0;
+        const startSec = Math.max(0, range?.startSec ?? 0);
+        const endSec = range && range.endSec > startSec ? Math.min(range.endSec, fileDuration || range.endSec) : fileDuration;
+        const span = Math.max(0.1, (endSec || 1) - startSec);
         const fps = 30;
         const stream = canvas.captureStream(fps);
         let audioCtx: AudioContext | null = null;
@@ -377,12 +399,32 @@ export class ExportEngine {
         };
 
         let stopTicker: (() => void) | null = null;
+        let stopping = false;
+        const stopRecording = () => {
+          if (stopping) return;
+          stopping = true;
+          video.pause();
+          setTimeout(() => {
+            if (recorder.state === 'recording') recorder.stop();
+          }, 300);
+        };
         const renderTick = () => {
-          if (!video.paused && !video.ended) {
-            ctx.drawImage(video, 0, 0, canvasW, canvasH);
-            CaptionEngine.renderCaptions(ctx, video.currentTime, segments, style, canvasW, canvasH, customSettings);
-            onProgress?.(Math.min(0.99, video.currentTime / duration));
+          if (stopping || video.paused || video.ended) return;
+          if (endSec > 0 && video.currentTime >= endSec) {
+            stopRecording();
+            return;
           }
+          // Fit the source inside the frame instead of stretching it
+          const vw = video.videoWidth || canvasW;
+          const vh = video.videoHeight || canvasH;
+          const scale = Math.min(canvasW / vw, canvasH / vh);
+          const dw = vw * scale;
+          const dh = vh * scale;
+          ctx.fillStyle = '#000';
+          ctx.fillRect(0, 0, canvasW, canvasH);
+          ctx.drawImage(video, (canvasW - dw) / 2, (canvasH - dh) / 2, dw, dh);
+          CaptionEngine.renderCaptions(ctx, video.currentTime, segments, style, canvasW, canvasH, customSettings);
+          onProgress?.(Math.min(0.99, Math.max(0, (video.currentTime - startSec) / span)));
         };
 
         recorder.onstop = () => {
@@ -397,20 +439,25 @@ export class ExportEngine {
           resolve(new Blob(chunks, { type: mimeType.split(';')[0] }));
         };
 
-        recorder.start(250);
-        video.play().then(() => {
-          // Worker ticker keeps rendering at 30 FPS even if the tab is hidden or minimized
-          stopTicker = ExportEngine.startTicker(1000 / fps, renderTick);
-        }).catch((err) => {
-          recorder.stop();
-          reject(err);
-        });
-
-        video.onended = () => {
-          setTimeout(() => {
-            if (recorder.state === 'recording') recorder.stop();
-          }, 300);
+        const begin = () => {
+          recorder.start(250);
+          video.play().then(() => {
+            // Worker ticker keeps rendering at 30 FPS even if the tab is hidden or minimized
+            stopTicker = ExportEngine.startTicker(1000 / fps, renderTick);
+          }).catch((err) => {
+            recorder.stop();
+            reject(err);
+          });
         };
+
+        video.onended = stopRecording;
+
+        if (startSec > 0) {
+          video.addEventListener('seeked', begin, { once: true });
+          video.currentTime = startSec;
+        } else {
+          begin();
+        }
       };
 
       video.onerror = () => {

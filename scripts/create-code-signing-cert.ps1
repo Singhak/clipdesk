@@ -1,11 +1,16 @@
 param(
     [string]$CertName = "ClipDesk Code Signing",
-    [string]$Password = "ClipDesk2026!",
+    [string]$Password = $env:CLIPDESK_CERT_PASSWORD,
     [string]$OutputDir = "certs",
     [string]$PfxFile = "clipdesk-codesign.pfx"
 )
 
 $ErrorActionPreference = "Stop"
+
+# The certificate password comes from -Password or CLIPDESK_CERT_PASSWORD; it is never stored in the repo
+if ([string]::IsNullOrEmpty($Password)) {
+    throw "Set CLIPDESK_CERT_PASSWORD (or pass -Password) to the code signing certificate password."
+}
 
 if (-not (Test-Path $OutputDir)) {
     New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null

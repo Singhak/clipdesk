@@ -1,4 +1,5 @@
 import type { TemplateId, NoiseSuppressionMode } from '../src/core/types';
+import type { TimeRange } from '../src/core/cutList';
 
 export type { NoiseSuppressionMode };
 
@@ -75,9 +76,11 @@ export interface PointerSample {
   click: boolean;
 }
 
+/** Container formats MediaRecorder can produce; anything else is refused by the main process */
+export type RecordingExtension = 'mp4' | 'webm';
+
+/** Sent when the recorder stops. The video itself was already streamed to disk chunk by chunk. */
 export interface SaveRequest {
-  bytes: ArrayBuffer;
-  extension: string;
   timerMs: number;
   layout: DesktopLayout;
   warnings: string[];
@@ -92,6 +95,10 @@ export interface SavedRecording {
   layout: DesktopLayout;
   warnings: string[];
   size: number;
+  /** The untouched take when `path` is an edited copy; edits always render from it */
+  sourcePath?: string;
+  /** The parts of the source the edited copy keeps, in source seconds */
+  kept?: TimeRange[];
 }
 
 export const isActive = (s: RecState): boolean => s.status !== 'idle';

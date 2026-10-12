@@ -22,6 +22,7 @@ import {
   IDLE_STATE,
   PointerSample,
   RecState,
+  RecordingExtension,
   SaveRequest,
   SavedRecording,
   SourceInfo,
@@ -30,6 +31,15 @@ import {
   isActive
 } from './shared';
 import { FFmpegManager } from './ffmpegManager';
+import { parseRanges, type TimeRange } from '../src/core/cutList';
+import { initDiagnostics, log, openDiagnosticsFolder } from './diagnostics';
+import { checkNow, initUpdater, installNow, updateStatus } from './updater';
+
+/** Console output is lost in the installed app, so problems also go to the diagnostics log */
+function report(level: 'warn' | 'error', message: string, e: unknown): void {
+  console[level](message, e);
+  log(level, 'main', `${message} ${e instanceof Error ? e.message : String(e)}`);
+}
 
 // Desktop recorder, Loom-style:
 // - the launcher window picks a screen or window and the reel format
@@ -66,6 +76,18 @@ let currentCameraSizeKey: 'small' | 'medium' | 'large' = 'medium';
 let state: RecState = { ...IDLE_STATE };
 let config: DesktopConfig = { ...DEFAULT_DESKTOP_CONFIG };
 const recordings = new Map<string, SavedRecording>();
+
+/** The take being recorded, streamed to disk chunk by chunk so a long take never sits in RAM */
+interface ActiveTake {
+  handle: fs.FileHandle;
+  path: string;
+  baseName: string;
+  extension: RecordingExtension;
+  bytes: number;
+  /** Writes are chained so chunks land in the order they arrived */
+  queue: Promise<void>;
+}
+let activeTake: ActiveTake | null = null;
 
 // ---------- windows ----------
 
@@ -401,7 +423,7 @@ function loadHook(): Hook | null {
       if (p) sendPointer({ ...p, click: true });
     });
   } catch (e) {
-    console.warn('Global mouse hook unavailable; click zoom is off.', e);
+    report('warn', 'Global mouse hook unavailable; click zoom is off.', e);
     hookModule = null;
   }
   return hookModule;
@@ -424,7 +446,7 @@ function startTracking(): void {
       hookModule.uIOhook.start();
       hookRunning = true;
     } catch (e) {
-      console.warn('Could not start the global mouse hook.', e);
+      report('warn', 'Could not start the global mouse hook.', e);
     }
   }
 }
@@ -466,9 +488,27 @@ function refreshTray(): void {
       { label: 'Open ClipDesk', click: () => showLauncher() },
       { label: 'Open recordings folder', click: () => void recordingsDir().then((d) => shell.openPath(d)) },
       { type: 'separator' },
+      updateMenuItem(recording),
+      { label: 'Open logs and crash reports', click: () => openDiagnosticsFolder() },
+      { type: 'separator' },
       { label: 'Quit', click: () => app.quit() }
     ])
   );
+}
+
+function updateMenuItem(recording: boolean): Electron.MenuItemConstructorOptions {
+  const u = updateStatus();
+  switch (u.kind) {
+    case 'checking':
+      return { label: 'Checking for updates…', enabled: false };
+    case 'downloading':
+      return { label: `Downloading update ${u.version} (${u.percent}%)`, enabled: false };
+    case 'ready':
+      // Installing quits the app, so it waits until the take is saved
+      return { label: recording ? `Update ${u.version} installs after this recording` : `Restart to update to ${u.version}`, enabled: !recording, click: () => installNow() };
+    default:
+      return { label: 'Check for updates', click: () => void checkNow(true) };
+  }
 }
 
 function createTray(): void {
@@ -486,22 +526,69 @@ async function recordingsDir(): Promise<string> {
   return dir;
 }
 
-async function saveRecording(req: SaveRequest): Promise<SavedRecording> {
-  const createdAt = Date.now();
+function takeBaseName(createdAt: number): string {
   // Local time, e.g. "2026-10-11 17-12-25" (colons aren't allowed in Windows file names)
   const d = new Date(createdAt);
   const pad = (n: number) => String(n).padStart(2, '0');
   const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
-  const baseName = `ClipDesk ${stamp}`;
-  const rawFile = path.join(await recordingsDir(), `${baseName}.${req.extension}`);
-  const bytes = Buffer.from(req.bytes);
-  await fs.writeFile(rawFile, bytes);
+  return `ClipDesk ${stamp}`;
+}
+
+async function beginTake(extension: unknown): Promise<void> {
+  if (extension !== 'mp4' && extension !== 'webm') throw new Error('Unsupported recording format');
+  await abortTake();
+  const baseName = takeBaseName(Date.now());
+  // Written straight to its final name: if the app dies mid-take, the file up to that point survives
+  const file = path.join(await recordingsDir(), `${baseName}.${extension}`);
+  const handle = await fs.open(file, 'w');
+  activeTake = { handle, path: file, baseName, extension, bytes: 0, queue: Promise.resolve() };
+}
+
+function writeChunk(bytes: unknown): Promise<void> {
+  const take = activeTake;
+  if (!take) return Promise.reject(new Error('No recording in progress'));
+  if (!(bytes instanceof ArrayBuffer) && !ArrayBuffer.isView(bytes)) return Promise.reject(new Error('Invalid chunk'));
+  const buf = bytes instanceof ArrayBuffer ? Buffer.from(bytes) : Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  take.queue = take.queue.then(async () => {
+    await take.handle.write(buf);
+    take.bytes += buf.length;
+  });
+  return take.queue;
+}
+
+/** Closes the take file once pending writes land and returns it; the caller owns it from here */
+async function closeTake(): Promise<ActiveTake | null> {
+  const take = activeTake;
+  activeTake = null;
+  if (take) {
+    await take.queue.catch(() => undefined);
+    await take.handle.close().catch(() => undefined);
+  }
+  return take;
+}
+
+async function abortTake(): Promise<void> {
+  const take = await closeTake();
+  if (take) await fs.unlink(take.path).catch(() => undefined);
+}
+
+async function saveRecording(req: SaveRequest): Promise<SavedRecording> {
+  const take = await closeTake();
+  if (!take || take.bytes === 0) {
+    if (take) await fs.unlink(take.path).catch(() => undefined);
+    throw new Error('the recording is empty');
+  }
+  const createdAt = Date.now();
+  const baseName = take.baseName;
+  const rawFile = take.path;
+  const extension = take.extension;
+  const finalSizeRaw = take.bytes;
 
   let finalFile = rawFile;
-  let finalSize = bytes.length;
+  let finalSize = finalSizeRaw;
   const noiseCancellation = req.noiseCancellation ?? config.noiseCancellation ?? 'studio';
 
-  if (req.extension !== 'mp4') {
+  if (extension !== 'mp4') {
     const mp4File = path.join(await recordingsDir(), `${baseName}.mp4`);
     try {
       await FFmpegManager.convertToMp4(rawFile, mp4File, { noiseCancellation });
@@ -511,7 +598,7 @@ async function saveRecording(req: SaveRequest): Promise<SavedRecording> {
       const stat = await fs.stat(mp4File);
       finalSize = stat.size;
     } catch (e) {
-      console.warn('Native FFmpeg conversion failed, keeping raw recording:', e);
+      report('warn', 'Native FFmpeg conversion failed, keeping raw recording:', e);
       req.warnings.push('MP4 conversion encountered an issue; raw recording kept.');
     }
   } else {
@@ -524,7 +611,7 @@ async function saveRecording(req: SaveRequest): Promise<SavedRecording> {
       const stat = await fs.stat(rawFile);
       finalSize = stat.size;
     } catch (e) {
-      console.warn('Post-processing optimization skipped:', e);
+      report('warn', 'Post-processing optimization skipped:', e);
     }
   }
 
@@ -542,6 +629,14 @@ async function saveRecording(req: SaveRequest): Promise<SavedRecording> {
 }
 
 // ---------- IPC ----------
+
+/** Validates a kept-ranges edit from the result window */
+function parseKeep(kept: unknown, duration: unknown): { ranges: TimeRange[]; duration: number } | null {
+  const ranges = parseRanges(kept);
+  if (!ranges || typeof duration !== 'number' || !Number.isFinite(duration) || duration <= 0) return null;
+  if (ranges[0].startSec < 0 || ranges[ranges.length - 1].endSec > duration + 0.5) return null;
+  return { ranges, duration };
+}
 
 function registerIpc(): void {
   ipcMain.handle('state:get', () => state);
@@ -649,8 +744,16 @@ function registerIpc(): void {
 
   ipcMain.handle('recorder:config', () => config);
   ipcMain.on('recorder:state', (_e, patch: Partial<RecState>) => setState(patch));
-  ipcMain.on('recorder:fail', (_e, message: string) => setState({ ...IDLE_STATE, error: message }));
-  ipcMain.on('recorder:discard', () => setState({ ...IDLE_STATE }));
+  ipcMain.on('recorder:fail', (_e, message: string) => {
+    void abortTake();
+    setState({ ...IDLE_STATE, error: message });
+  });
+  ipcMain.on('recorder:discard', () => {
+    void abortTake();
+    setState({ ...IDLE_STATE });
+  });
+  ipcMain.handle('recorder:begin', (_e, extension: unknown) => beginTake(extension));
+  ipcMain.handle('recorder:chunk', (_e, bytes: unknown) => writeChunk(bytes));
   ipcMain.handle('recorder:save', async (_e, req: SaveRequest) => {
     try {
       const rec = await saveRecording(req);
@@ -667,7 +770,8 @@ function registerIpc(): void {
     const meta = recordings.get(id);
     if (!meta) return null;
     try {
-      return { meta, bytes: await fs.readFile(meta.path) };
+      // The editor always works on the untouched take; meta.kept says what the saved edit keeps
+      return { meta, bytes: await fs.readFile(meta.sourcePath ?? meta.path) };
     } catch {
       return null;
     }
@@ -689,38 +793,78 @@ function registerIpc(): void {
   ipcMain.handle('result:trash', async (_e, id: string) => {
     const meta = recordings.get(id);
     if (!meta) return false;
-    // Recycle Bin / Trash rather than a permanent delete
+    // Recycle Bin / Trash rather than a permanent delete; an edited take goes with its source
     await shell.trashItem(meta.path);
+    if (meta.sourcePath && meta.sourcePath !== meta.path) await shell.trashItem(meta.sourcePath).catch(() => undefined);
     recordings.delete(id);
     return true;
   });
-  ipcMain.handle('result:trim', async (_e, { id, startSec, endSec }: { id: string; startSec: number; endSec: number }) => {
-    const meta = recordings.get(id);
-    if (!meta) return null;
+  ipcMain.handle('result:cut', async (_e, req: { id: string; kept: unknown; duration: unknown }) => {
+    const meta = req && typeof req.id === 'string' ? recordings.get(req.id) : undefined;
+    const keep = req ? parseKeep(req.kept, req.duration) : null;
+    if (!meta || !keep) return null;
+    const source = meta.sourcePath ?? meta.path;
+    const { ranges: kept, duration } = keep;
+
+    // Nothing cut any more: point back at the original take
+    if (kept.length === 1 && kept[0].startSec <= 0.01 && kept[0].endSec >= duration - 0.01) {
+      const stats = await fs.stat(source);
+      const restored: SavedRecording = { ...meta, path: source, size: stats.size, sourcePath: undefined, kept: undefined };
+      recordings.set(meta.id, restored);
+      return restored;
+    }
+
+    const base = path.basename(source, path.extname(source));
+    // Always MP4: the edit is encoded H.264/AAC, which a .webm container can't hold
+    const editedPath = path.join(path.dirname(source), `${base} (edited).mp4`);
+    const tmpPath = path.join(path.dirname(source), `${base} (edited).part.mp4`);
     try {
-      const ext = path.extname(meta.path);
-      const dir = path.dirname(meta.path);
-      const base = path.basename(meta.path, ext);
-      const trimmedPath = path.join(dir, `${base}_trimmed_${Date.now()}${ext}`);
-
-      await FFmpegManager.trimVideo(meta.path, trimmedPath, startSec, endSec);
-
-      const stats = await fs.stat(trimmedPath);
-      const updatedMeta: SavedRecording = {
+      await FFmpegManager.renderEdit(source, tmpPath, { keep });
+      await fs.rename(tmpPath, editedPath);
+      const stats = await fs.stat(editedPath);
+      const updated: SavedRecording = {
         ...meta,
-        path: trimmedPath,
+        path: editedPath,
+        sourcePath: source,
+        kept,
         size: stats.size,
-        timerMs: Math.round((endSec - startSec) * 1000)
+        timerMs: Math.round(kept.reduce((n, r) => n + r.endSec - r.startSec, 0) * 1000)
       };
-      recordings.set(id, updatedMeta);
-
-      return {
-        meta: updatedMeta,
-        bytes: await fs.readFile(trimmedPath)
-      };
+      recordings.set(meta.id, updated);
+      return updated;
     } catch (err) {
-      console.error('Failed to trim video with native FFmpeg:', err);
+      await fs.rm(tmpPath, { force: true }).catch(() => undefined);
+      report('error', 'Failed to cut video with native FFmpeg:', err);
       return null;
+    }
+  });
+  ipcMain.handle('result:burn-captions', async (e, req: { id: string; ass: string; kept?: unknown; duration?: unknown }) => {
+    const meta = req && typeof req.id === 'string' ? recordings.get(req.id) : undefined;
+    if (!meta) throw new Error('Recording not found');
+    if (typeof req.ass !== 'string' || req.ass.length === 0 || req.ass.length > 5_000_000) {
+      throw new Error('Invalid caption script');
+    }
+    // Captions are timed against the cut video, so the cuts are applied in the same pass
+    const keep = req.kept === undefined ? null : parseKeep(req.kept, req.duration);
+    if (req.kept !== undefined && !keep) throw new Error('Invalid cut list');
+    const source = meta.sourcePath ?? meta.path;
+    const tmpDir = await fs.mkdtemp(path.join(app.getPath('temp'), 'clipdesk-captions-'));
+    const assPath = path.join(tmpDir, 'captions.ass');
+    const base = path.basename(source, path.extname(source));
+    const outPath = path.join(path.dirname(source), `${base} (captions).mp4`);
+    try {
+      await fs.writeFile(assPath, req.ass, 'utf8');
+      await FFmpegManager.renderEdit(source, outPath, {
+        keep: keep ?? undefined,
+        assPath,
+        onSeconds: (sec) => {
+          if (!e.sender.isDestroyed()) e.sender.send('result:burn-progress', sec);
+        }
+      });
+      shell.showItemInFolder(outPath);
+      return outPath;
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => undefined);
     }
   });
   ipcMain.on('result:again', (e) => {
@@ -730,6 +874,8 @@ function registerIpc(): void {
 }
 
 // ---------- lifecycle ----------
+
+initDiagnostics();
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -741,6 +887,7 @@ if (!app.requestSingleInstanceLock()) {
     installCaptureHandlers();
     registerIpc();
     createTray();
+    initUpdater(refreshTray);
     showLauncher();
     // Keep the tray tooltip timer fresh while recording
     setInterval(() => isActive(state) && refreshTray(), 1000);

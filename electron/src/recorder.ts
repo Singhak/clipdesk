@@ -29,6 +29,10 @@ let recorder: ReturnType<typeof ExportEngine.startRecordingCanvas> | null = null
 let stopRender: (() => void) | null = null;
 let finishing = false;
 const warnings: string[] = [];
+/** Chunks are written to disk one after another; this is the tail of that chain */
+let diskWrites: Promise<void> = Promise.resolve();
+let diskError: string | null = null;
+let bytesQueued = 0;
 
 const webcamConfig: WebcamConfig = {
   enabled: false,
@@ -143,15 +147,18 @@ async function finish(save: boolean): Promise<void> {
     return;
   }
   setState({ status: 'saving', accumulatedMs: timerMs, runningSince: null });
-  const blob = await recorder.stop();
+  await recorder.stop();
   releaseAll();
-  if (blob.size === 0) {
+  await diskWrites;
+  if (diskError) {
+    reel.recorder.fail(`The recording could not be written to disk (${diskError}).`);
+    return;
+  }
+  if (bytesQueued === 0) {
     reel.recorder.fail('The recording is empty, so there is nothing to save.');
     return;
   }
   await reel.recorder.save({
-    bytes: await blob.arrayBuffer(),
-    extension: ExportEngine.extensionFor(blob),
     timerMs,
     layout: config.layout,
     warnings,
@@ -261,13 +268,36 @@ async function main(): Promise<void> {
   if (finishing) return;
 
   try {
-    recorder = ExportEngine.startRecordingCanvas(canvas, mixed.stream, {
-      format: 'mp4',
-      resolution: config.layout === 'widescreen' ? '1920x1080' : '1080x1920',
-      fps: FPS,
-      layout: config.layout as LayoutMode,
-      includeWatermark: watermark,
-      templateId: config.templateId
+    // Each chunk goes to disk as it is encoded, so take length isn't limited by RAM
+    const onChunk = (chunk: Blob) => {
+      bytesQueued += chunk.size;
+      diskWrites = diskWrites.then(async () => {
+        if (diskError) return;
+        try {
+          await reel.recorder.writeChunk(await chunk.arrayBuffer());
+        } catch (e) {
+          diskError = e instanceof Error ? e.message : String(e);
+          void finish(true);
+        }
+      });
+    };
+    recorder = ExportEngine.startRecordingCanvas(
+      canvas,
+      mixed.stream,
+      {
+        format: 'mp4',
+        resolution: config.layout === 'widescreen' ? '1920x1080' : '1080x1920',
+        fps: FPS,
+        layout: config.layout as LayoutMode,
+        includeWatermark: watermark,
+        templateId: config.templateId
+      },
+      { onChunk, keepInMemory: false }
+    );
+    const extension = recorder.mimeType.includes('mp4') ? 'mp4' : 'webm';
+    // Queued first, so the file is open before the first chunk arrives
+    diskWrites = reel.recorder.beginTake(extension).catch((e) => {
+      diskError = e instanceof Error ? e.message : String(e);
     });
   } catch (e) {
     fail(`Recording could not start (${e instanceof Error ? e.message : String(e)}).`);

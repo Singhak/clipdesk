@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* The cut editor widget is shared with the web app and lives outside this build's root */
+@source "../../src/components/cutTimeline.ts";
 
 :root {
   color-scheme: dark;

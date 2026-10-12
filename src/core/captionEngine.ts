@@ -6,6 +6,9 @@
  * and customizable location, size, and background.
  */
 
+import type { WhisperMessage, WhisperRequest } from './whisper.worker';
+import { remapCaptions } from './cutList';
+
 export type CaptionStyleId = 'viral_karaoke' | 'neon_cyber' | 'minimal_clean' | 'tiktok_punch';
 
 export interface CaptionWord {
@@ -113,6 +116,96 @@ export const CAPTION_SIZE_PRESETS: Record<
   large: { name: 'Large', fontSize: 64, label: '64px' },
   hero: { name: 'Hero', fontSize: 78, label: '78px' }
 };
+
+let whisperWorker: Worker | null = null;
+let whisperQueue: Promise<unknown> = Promise.resolve();
+
+/** Runs one transcription in the shared Whisper worker; requests are queued, the model stays loaded */
+function runWhisperWorker(
+  req: WhisperRequest,
+  onProgress: (info: { status: string; progress: number }) => void
+): Promise<Extract<WhisperMessage, { type: 'result' }>> {
+  const run = () =>
+    new Promise<Extract<WhisperMessage, { type: 'result' }>>((resolve, reject) => {
+      if (!whisperWorker) {
+        whisperWorker = new Worker(new URL('./whisper.worker.ts', import.meta.url), { type: 'module' });
+      }
+      const worker = whisperWorker;
+      const cleanup = () => {
+        worker.removeEventListener('message', onMessage);
+        worker.removeEventListener('error', onError);
+      };
+      const onMessage = (e: MessageEvent<WhisperMessage>) => {
+        const msg = e.data;
+        if (msg.type === 'progress') onProgress(msg);
+        else if (msg.type === 'result') {
+          cleanup();
+          resolve(msg);
+        } else {
+          cleanup();
+          reject(new Error(msg.message));
+        }
+      };
+      const onError = (e: ErrorEvent) => {
+        cleanup();
+        // A crashed worker can't be reused
+        worker.terminate();
+        if (whisperWorker === worker) whisperWorker = null;
+        reject(new Error(e.message || 'The transcription worker failed to start.'));
+      };
+      worker.addEventListener('message', onMessage);
+      worker.addEventListener('error', onError);
+      worker.postMessage(req, [req.audio.buffer]);
+    });
+  const next = whisperQueue.then(run, run);
+  whisperQueue = next.catch(() => undefined);
+  return next;
+}
+
+/** A CSS color (#rgb, #rrggbb, rgb(), rgba()) as an ASS &HAABBGGRR color; opacity overrides its alpha */
+function assColor(color: string, opacity?: number): string {
+  let r = 255;
+  let g = 255;
+  let b = 255;
+  let a = 1;
+  const c = (color || '').trim();
+  if (c === 'transparent') {
+    a = 0;
+  } else if (c.startsWith('#')) {
+    let hex = c.slice(1);
+    if (hex.length === 3) hex = hex.split('').map((ch) => ch + ch).join('');
+    r = parseInt(hex.substring(0, 2), 16) || 0;
+    g = parseInt(hex.substring(2, 4), 16) || 0;
+    b = parseInt(hex.substring(4, 6), 16) || 0;
+  } else {
+    const m = c.match(/rgba?\(([^)]+)\)/);
+    if (m) {
+      const parts = m[1].split(',').map((v) => parseFloat(v));
+      [r, g, b] = parts;
+      if (parts.length > 3 && Number.isFinite(parts[3])) a = parts[3];
+    }
+  }
+  if (opacity !== undefined) a = opacity;
+  const hex2 = (n: number) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, '0').toUpperCase();
+  // ASS alpha is inverted: 00 is opaque, FF is invisible
+  return `&H${hex2(255 * (1 - a))}${hex2(b)}${hex2(g)}${hex2(r)}`;
+}
+
+/** Seconds as an ASS timestamp, H:MM:SS.cc */
+function assTime(sec: number): string {
+  const cs = Math.max(0, Math.round(sec * 100));
+  const h = Math.floor(cs / 360000);
+  const m = Math.floor((cs % 360000) / 6000);
+  const s = Math.floor((cs % 6000) / 100);
+  const c = cs % 100;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${h}:${pad(m)}:${pad(s)}.${pad(c)}`;
+}
+
+/** Text safe for an ASS dialogue line: no override blocks, escapes or raw newlines */
+function assEscape(text: string): string {
+  return text.replace(/\\/g, '\\\\').replace(/[{}]/g, '').replace(/\r?\n/g, '\\N');
+}
 
 /**
  * Converts a hex, rgb, or rgba string into an rgba string with custom alpha
@@ -454,7 +547,7 @@ export class CaptionEngine {
 
   /**
    * Transcribes recorded video/audio completely on-device using Whisper.wasm (Transformers.js).
-   * Zero API keys required, 100% private, runs in-browser via WebAssembly.
+   * No API key needed; audio stays on the device. The model is downloaded once from Hugging Face.
    */
   public static async transcribeWithLocalWhisper(options: {
     blob: Blob;
@@ -487,37 +580,17 @@ export class CaptionEngine {
     const audioData = resampled.getChannelData(0);
     await audioCtx.close();
 
-    options.onProgress?.({ status: 'Loading Whisper.wasm neural model (~39MB)...', progress: 25 });
-    const { pipeline, env } = await import('@xenova/transformers');
-    env.allowLocalModels = false;
-    env.useBrowserCache = true;
-
     const modelName =
       options.model ||
       (options.language === 'en' || !options.language ? 'Xenova/whisper-tiny.en' : 'Xenova/whisper-tiny');
 
-    const transcriber = await pipeline('automatic-speech-recognition', modelName, {
-      quantized: true,
-      progress_callback: (p: any) => {
-        if (p?.status === 'progress' && typeof p?.progress === 'number') {
-          options.onProgress?.({
-            status: `Downloading Whisper model (${p.file || 'weights'}): ${Math.round(p.progress)}%`,
-            progress: Math.min(80, Math.round(25 + p.progress * 0.55))
-          });
-        }
-      }
-    });
-
-    options.onProgress?.({ status: 'Transcribing speech with WebAssembly Whisper...', progress: 85 });
-    const result = await transcriber(audioData, {
-      chunk_length_s: 30,
-      stride_length_s: 5,
-      return_timestamps: 'word',
-      language: options.language && options.language !== 'auto' ? options.language : undefined
-    });
+    // Inference runs in a worker so the page doesn't freeze during a long transcription
+    const result = await runWhisperWorker({ audio: audioData, model: modelName, language: options.language }, (m) =>
+      options.onProgress?.(m)
+    );
 
     const segments: CaptionSegment[] = [];
-    const chunks = (result as any)?.chunks || [];
+    const chunks = result.chunks;
 
     if (Array.isArray(chunks) && chunks.length > 0) {
       let currentWords: CaptionWord[] = [];
@@ -529,8 +602,8 @@ export class CaptionEngine {
         const wordText = (c.text || '').trim();
         if (!wordText) continue;
 
-        const start = Array.isArray(c.timestamp) ? c.timestamp[0] ?? 0 : (c.timestamp?.start ?? 0);
-        const end = Array.isArray(c.timestamp) ? c.timestamp[1] ?? (start + 0.4) : (c.timestamp?.end ?? (start + 0.4));
+        const start = c.timestamp?.[0] ?? 0;
+        const end = c.timestamp?.[1] ?? start + 0.4;
 
         if (currentWords.length === 0) segStart = start;
         segEnd = Math.max(segEnd, end);
@@ -554,8 +627,8 @@ export class CaptionEngine {
           currentWords = [];
         }
       }
-    } else if (typeof (result as any)?.text === 'string' && (result as any).text.trim()) {
-      return generateSegmentsFromText((result as any).text.trim(), audioBuffer.duration || 10);
+    } else if (result.text.trim()) {
+      return generateSegmentsFromText(result.text.trim(), audioBuffer.duration || 10);
     }
 
     options.onProgress?.({ status: 'Transcription complete!', progress: 100 });
@@ -712,6 +785,95 @@ export class CaptionEngine {
     }
 
     return segments;
+  }
+
+  /**
+   * Moves captions onto the timeline of a clip cut to [startSec, endSec]: lines outside the cut
+   * are dropped, the rest are shifted and clamped to the new length.
+   */
+  public static shiftForTrim(segments: CaptionSegment[], startSec: number, endSec: number): CaptionSegment[] {
+    return remapCaptions(segments, [{ startSec, endSec }]);
+  }
+
+  /**
+   * Builds an ASS subtitle script that matches renderCaptions, for burning in with ffmpeg/libass.
+   * Karaoke highlighting is emitted as one event per word interval, so only the spoken word is lit.
+   */
+  public static toASS(
+    segments: CaptionSegment[],
+    style: CaptionStyleConfig,
+    settings: CaptionCustomSettings,
+    width: number,
+    height: number
+  ): string {
+    const scale = width / 1080;
+    const fontSize = Math.round((settings.fontSize || style.fontSize) * scale);
+    const isTransparent = settings.bgPreset === 'transparent' || settings.bgOpacity === 0;
+    const text = assColor(style.textColor);
+    const highlight = assColor(style.highlightColor);
+
+    // BorderStyle 4 (libass) draws one box per line in BackColour; per-glyph boxes (style 3) would
+    // overlap into darker seams when semi-transparent. BorderStyle 1 is a plain text outline.
+    const borderStyle = isTransparent ? 1 : 4;
+    const outlineColour = isTransparent ? assColor(style.outlineColor) : '&HFF000000';
+    const backColour = isTransparent ? '&H80000000' : assColor(settings.bgColor, settings.bgOpacity);
+    const outline = isTransparent ? Math.max(3, style.outlineWidth + 2) * scale : 16 * scale;
+    const shadow = isTransparent ? 2 * scale : 0;
+
+    const x =
+      settings.alignment === 'left' ? 40 * scale : settings.alignment === 'right' ? width - 40 * scale : width / 2;
+    const an = settings.alignment === 'left' ? 4 : settings.alignment === 'right' ? 6 : 5;
+    const y = height * (settings.positionYRatio ?? style.positionYRatio);
+    const pos = `{\\an${an}\\pos(${Math.round(x)},${Math.round(y)})}`;
+
+    const lines = [
+      '[Script Info]',
+      'ScriptType: v4.00+',
+      `PlayResX: ${width}`,
+      `PlayResY: ${height}`,
+      'WrapStyle: 0',
+      'ScaledBorderAndShadow: yes',
+      '',
+      '[V4+ Styles]',
+      'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
+      `Style: Caption,Arial,${fontSize},${text},${highlight},${outlineColour},${backColour},-1,0,0,0,100,100,0,0,${borderStyle},${outline.toFixed(1)},${shadow.toFixed(1)},5,${Math.round(40 * scale)},${Math.round(40 * scale)},0,1`,
+      '',
+      '[Events]',
+      'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text'
+    ];
+
+    const caps = (w: string) => (style.allCaps ? w.toUpperCase() : w);
+    const event = (start: number, end: number, body: string) => {
+      if (end - start < 0.01) return;
+      lines.push(`Dialogue: 0,${assTime(start)},${assTime(end)},Caption,,0,0,0,,${pos}${body}`);
+    };
+
+    const sorted = [...segments].sort((a, b) => a.startSec - b.startSec);
+    for (const seg of sorted) {
+      const words = seg.words.filter((w) => w.word.trim());
+      if (style.id !== 'viral_karaoke' || words.length === 0) {
+        event(seg.startSec, seg.endSec, assEscape(caps(seg.text)));
+        continue;
+      }
+      // Cut the segment at every word boundary; in each slice, light the word being spoken
+      const cuts = new Set<number>([seg.startSec, seg.endSec]);
+      for (const w of words) {
+        cuts.add(Math.min(seg.endSec, Math.max(seg.startSec, w.startSec)));
+        cuts.add(Math.min(seg.endSec, Math.max(seg.startSec, w.endSec)));
+      }
+      const times = [...cuts].sort((a, b) => a - b);
+      for (let i = 0; i < times.length - 1; i++) {
+        const mid = (times[i] + times[i + 1]) / 2;
+        const body = words
+          .map((w) => {
+            const word = assEscape(caps(w.word));
+            return mid >= w.startSec && mid <= w.endSec ? `{\\c${highlight}&}${word}{\\c${text}&}` : word;
+          })
+          .join(' ');
+        event(times[i], times[i + 1], body);
+      }
+    }
+    return lines.join('\n') + '\n';
   }
 
   /**
