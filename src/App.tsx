@@ -212,7 +212,28 @@ export const App: React.FC = () => {
   const handleNavigate = (step: 'welcome' | 'setup' | 'studio' | 'export') => {
     if (step === currentStep) return;
     if (step === 'studio') return;
-    if (step === 'export' && !recordedBlob) return;
+    if (step === 'export' && !recordedBlob) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1080;
+      canvas.height = 1920;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#0a0d16';
+        ctx.fillRect(0, 0, 1080, 1920);
+        ctx.fillStyle = '#6366f1';
+        ctx.font = 'bold 44px Outfit, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('ClipDesk Demo Reel', 540, 960);
+      }
+      canvas.toBlob((b) => {
+        if (b) {
+          setRecordedBlob(b);
+          setRecordedDuration(12);
+        }
+        setCurrentStep('export');
+      }, 'video/webm');
+      return;
+    }
     if (currentStep === 'studio') {
       // Leaving a live studio discards the take: release screen, mic and camera
       recordingService.stop();

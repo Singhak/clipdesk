@@ -1,5 +1,6 @@
-import { ExportSettings } from './types';
+import { ExportSettings, LayoutMode } from './types';
 import { recoveryService } from './recordingRecoveryService';
+import { CaptionSegment, CaptionStyleConfig, CaptionCustomSettings, CaptionEngine } from './captionEngine';
 
 export class ExportEngine {
   /** Escapes a file path or command argument for safe execution in shell command strings */
@@ -302,6 +303,115 @@ export class ExportEngine {
    */
   public static extensionFor(blob: Blob): 'mp4' | 'webm' {
     return blob.type.includes('mp4') ? 'mp4' : 'webm';
+  }
+
+  /**
+   * Re-renders video with animated subtitles burned directly onto each canvas frame.
+   */
+  public static async burnCaptionsToVideo(
+    sourceBlob: Blob,
+    segments: CaptionSegment[],
+    style: CaptionStyleConfig,
+    customSettings: CaptionCustomSettings,
+    layoutMode: LayoutMode,
+    onProgress?: (ratio: number) => void
+  ): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      const isWide = layoutMode === 'widescreen';
+      const canvasW = isWide ? 1920 : 1080;
+      const canvasH = isWide ? 1080 : 1920;
+
+      const video = document.createElement('video');
+      video.muted = false;
+      video.playsInline = true;
+      video.preload = 'auto';
+
+      const blobUrl = URL.createObjectURL(sourceBlob);
+      video.src = blobUrl;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = canvasW;
+      canvas.height = canvasH;
+      const ctx = canvas.getContext('2d', { alpha: false });
+
+      if (!ctx) {
+        URL.revokeObjectURL(blobUrl);
+        reject(new Error('Canvas 2D context unavailable'));
+        return;
+      }
+
+      video.onloadedmetadata = () => {
+        const duration = video.duration || 1;
+        const fps = 30;
+        const stream = canvas.captureStream(fps);
+
+        try {
+          const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const sourceNode = audioCtx.createMediaElementSource(video);
+          const destNode = audioCtx.createMediaStreamDestination();
+          sourceNode.connect(destNode);
+          sourceNode.connect(audioCtx.destination);
+          destNode.stream.getAudioTracks().forEach((track) => stream.addTrack(track));
+        } catch {
+          // Continue if audio graph fails
+        }
+
+        const candidates = [
+          'video/mp4;codecs=avc1,mp4a.40.2',
+          'video/mp4',
+          'video/webm;codecs=vp9,opus',
+          'video/webm'
+        ];
+        const mimeType = candidates.find((m) => MediaRecorder.isTypeSupported(m)) ?? 'video/webm';
+        const recorder = new MediaRecorder(stream, {
+          mimeType,
+          videoBitsPerSecond: 14000000
+        });
+
+        const chunks: Blob[] = [];
+        recorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) chunks.push(e.data);
+        };
+
+        let animFrameId: number;
+        const renderLoop = () => {
+          if (!video.paused && !video.ended) {
+            ctx.drawImage(video, 0, 0, canvasW, canvasH);
+            CaptionEngine.renderCaptions(ctx, video.currentTime, segments, style, canvasW, canvasH, customSettings);
+            onProgress?.(Math.min(0.99, video.currentTime / duration));
+            animFrameId = requestAnimationFrame(renderLoop);
+          }
+        };
+
+        recorder.onstop = () => {
+          cancelAnimationFrame(animFrameId);
+          URL.revokeObjectURL(blobUrl);
+          video.removeAttribute('src');
+          video.load();
+          onProgress?.(1);
+          resolve(new Blob(chunks, { type: mimeType.split(';')[0] }));
+        };
+
+        recorder.start(250);
+        video.play().then(() => {
+          renderLoop();
+        }).catch((err) => {
+          recorder.stop();
+          reject(err);
+        });
+
+        video.onended = () => {
+          setTimeout(() => {
+            if (recorder.state === 'recording') recorder.stop();
+          }, 300);
+        };
+      };
+
+      video.onerror = () => {
+        URL.revokeObjectURL(blobUrl);
+        reject(new Error('Video loading error during caption burning'));
+      };
+    });
   }
 
   public static downloadBlob(blob: Blob, filename = `clipdesk_reel.${ExportEngine.extensionFor(blob)}`): void {

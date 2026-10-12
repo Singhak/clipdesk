@@ -21,7 +21,10 @@ import {
   CaptionEngine,
   CaptionSegment,
   CaptionStyleId,
-  CAPTION_STYLES
+  CAPTION_STYLES,
+  CaptionCustomSettings,
+  DEFAULT_CAPTION_SETTINGS,
+  colorWithAlpha
 } from '../core/captionEngine';
 import { recoveryService } from '../core/recordingRecoveryService';
 
@@ -82,12 +85,18 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     endSec: shownDuration || durationSeconds
   });
 
-  // Animated Captions state
+  // Animated Captions state & settings
   const [captionsEnabled, setCaptionsEnabled] = useState(false);
   const [captionStyle, setCaptionStyle] = useState<CaptionStyleId>('viral_karaoke');
+  const [captionSettings, setCaptionSettings] = useState<CaptionCustomSettings>(DEFAULT_CAPTION_SETTINGS);
   const [captionSegments, setCaptionSegments] = useState<CaptionSegment[]>(() =>
     CaptionEngine.generateSmartCaptions(shownDuration || durationSeconds)
   );
+
+  // Burning captions state
+  const [isBurningCaptions, setIsBurningCaptions] = useState(false);
+  const [burnProgress, setBurnProgress] = useState<number | null>(null);
+  const [burnError, setBurnError] = useState<string | null>(null);
 
   const [currentVideoTime, setCurrentVideoTime] = useState(0);
 
@@ -104,9 +113,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
   const needsConversion = ExportEngine.extensionFor(recordedBlob) !== 'mp4' && !mp4Blob;
   const isConverting = convertProgress !== null;
 
-  const saveBlob = (blob: Blob, customExt?: string) => {
-    const ext = customExt || ExportEngine.extensionFor(blob);
-    const filename = `clipdesk_${new Date().toISOString().slice(0, 10)}_${Date.now().toString().slice(-4)}.${ext}`;
+  const saveBlob = (blob: Blob, customFilename?: string) => {
+    const ext = ExportEngine.extensionFor(blob);
+    const filename = customFilename || `clipdesk_${new Date().toISOString().slice(0, 10)}_${Date.now().toString().slice(-4)}.${ext}`;
     ExportEngine.downloadBlob(blob, filename);
     // Recording successfully exported: clear recovery buffer
     void recoveryService.clearSession();
@@ -132,6 +141,33 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     setIsDownloading(true);
     saveBlob(exportBlob);
     setTimeout(() => setIsDownloading(false), 1500);
+  };
+
+  const handleBurnAndDownload = async () => {
+    if (captionSegments.length === 0) return;
+    setIsBurningCaptions(true);
+    setBurnProgress(0);
+    setBurnError(null);
+    try {
+      const burned = await ExportEngine.burnCaptionsToVideo(
+        exportBlob,
+        captionSegments,
+        CAPTION_STYLES[captionStyle],
+        captionSettings,
+        layoutMode,
+        (progress) => setBurnProgress(progress)
+      );
+      saveBlob(
+        burned,
+        `clipdesk_captions_${new Date().toISOString().slice(0, 10)}_${Date.now().toString().slice(-4)}.${ExportEngine.extensionFor(burned)}`
+      );
+    } catch (e: any) {
+      console.error('Caption burning error:', e);
+      setBurnError(e?.message || 'In-browser caption burning encountered an issue. You can download the raw recording.');
+    } finally {
+      setIsBurningCaptions(false);
+      setBurnProgress(null);
+    }
   };
 
   const handleCopyShareLink = () => {
@@ -206,27 +242,77 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   className="w-full h-full object-cover"
                 />
 
-                {/* Dynamic Captions Live Overlay */}
+                {/* Dynamic Captions Live Overlay with custom Location, Size, and Background */}
                 {captionsEnabled && (
-                  <div className="absolute inset-x-0 bottom-16 pointer-events-none flex justify-center px-4 animate-fadeIn z-20">
+                  <div
+                    className={`absolute inset-x-0 pointer-events-none flex z-20 animate-fadeIn ${
+                      captionSettings.alignment === 'left'
+                        ? 'justify-start pl-4 sm:pl-6'
+                        : captionSettings.alignment === 'right'
+                          ? 'justify-end pr-4 sm:pr-6'
+                          : 'justify-center px-4'
+                    }`}
+                    style={{
+                      top: `${captionSettings.positionYRatio * 100}%`,
+                      transform: 'translateY(-50%)'
+                    }}
+                  >
                     {(() => {
                       const active = captionSegments.find(
                         (s) => currentVideoTime >= s.startSec && currentVideoTime <= s.endSec
                       );
                       if (!active) return null;
                       const cfg = CAPTION_STYLES[captionStyle];
-                      const text = cfg.allCaps ? active.text.toUpperCase() : active.text;
+                      const isTransparent =
+                        captionSettings.bgPreset === 'transparent' || captionSettings.bgOpacity === 0;
+                      const previewFontSize = Math.max(
+                        11,
+                        Math.round(captionSettings.fontSize * (isWide ? 0.34 : 0.28))
+                      );
+                      const bgEffective = isTransparent
+                        ? 'transparent'
+                        : colorWithAlpha(captionSettings.bgColor, captionSettings.bgOpacity);
+
                       return (
                         <div
-                          className="px-3.5 py-1.5 rounded-xl text-center font-extrabold shadow-2xl max-w-[90%] backdrop-blur-sm"
+                          className="px-3 py-1 text-center font-extrabold max-w-[90%] backdrop-blur-sm transition-all duration-75"
                           style={{
-                            backgroundColor: cfg.bgColor,
+                            backgroundColor: bgEffective,
                             color: cfg.textColor,
-                            fontSize: isWide ? '16px' : '15px',
-                            border: '1.5px solid rgba(255,255,255,0.2)'
+                            fontSize: `${previewFontSize}px`,
+                            border:
+                              !isTransparent && captionSettings.hasBorder
+                                ? '1.5px solid rgba(255,255,255,0.2)'
+                                : 'none',
+                            borderRadius: `${Math.round(captionSettings.borderRadius * 0.7)}px`,
+                            boxShadow: isTransparent ? 'none' : '0 10px 25px -5px rgba(0,0,0,0.6)',
+                            textShadow: isTransparent
+                              ? '0 2px 8px rgba(0,0,0,0.95), 0 0 3px #000, 0 0 8px rgba(0,0,0,0.8)'
+                              : undefined
                           }}
                         >
-                          {text}
+                          {captionStyle === 'viral_karaoke' && active.words.length > 0 ? (
+                            active.words.map((w, wIdx) => {
+                              const isWordActive =
+                                currentVideoTime >= w.startSec && currentVideoTime <= w.endSec;
+                              return (
+                                <span
+                                  key={wIdx}
+                                  style={{
+                                    color: isWordActive ? cfg.highlightColor : cfg.textColor,
+                                    textShadow: isWordActive
+                                      ? `0 0 10px ${cfg.highlightColor}`
+                                      : undefined
+                                  }}
+                                  className="transition-colors duration-100 mr-1 inline-block"
+                                >
+                                  {cfg.allCaps ? w.word.toUpperCase() : w.word}
+                                </span>
+                              );
+                            })
+                          ) : (
+                            <span>{cfg.allCaps ? active.text.toUpperCase() : active.text}</span>
+                          )}
                         </div>
                       );
                     })()}
@@ -282,7 +368,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             onTrimChange={setTrim}
           />
 
-          {/* Dynamic AI Captions Generator */}
+          {/* Dynamic AI Captions Generator (Manual Typing + Speech-to-Text + Style/Position/Size/Background) */}
           <CaptionsGenerator
             enabled={captionsEnabled}
             onToggleEnabled={setCaptionsEnabled}
@@ -291,6 +377,13 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             segments={captionSegments}
             onUpdateSegments={setCaptionSegments}
             durationSeconds={shownDuration}
+            customSettings={captionSettings}
+            onUpdateSettings={setCaptionSettings}
+            currentTime={currentVideoTime}
+            onSeek={(sec) => {
+              const video = document.querySelector('video');
+              if (video) video.currentTime = sec;
+            }}
           />
 
           {/* Watermark & Subscription Status */}
@@ -327,11 +420,38 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
           {/* Main Download CTA */}
           <div className="pt-1 space-y-2">
+            {/* If Captions are enabled, offer 1-Click Download with Burned-In Captions */}
+            {captionsEnabled && captionSegments.length > 0 && (
+              <button
+                id="btn-export-with-captions"
+                onClick={handleBurnAndDownload}
+                disabled={isBurningCaptions || isDownloading || isConverting}
+                className="w-full flex items-center justify-center gap-2.5 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-black text-sm sm:text-base font-black shadow-xl shadow-amber-500/25 transition-all cursor-pointer"
+              >
+                <Subtitles className="w-5 h-5 text-black shrink-0" />
+                <span>
+                  {isBurningCaptions
+                    ? `Burning Captions to Video… ${Math.round((burnProgress ?? 0) * 100)}%`
+                    : `Download with Burned-In Captions (${sizeLabel})`}
+                </span>
+              </button>
+            )}
+
+            {burnError && (
+              <div role="alert" className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 text-center">
+                {burnError}
+              </div>
+            )}
+
             <button
               id="btn-one-click-export"
               onClick={handleDownload}
-              disabled={isDownloading || isConverting}
-              className="w-full flex items-center justify-center gap-3 py-3.5 rounded-xl btn-primary text-sm sm:text-base font-extrabold shadow-xl shadow-indigo-500/30 cursor-pointer"
+              disabled={isDownloading || isConverting || isBurningCaptions}
+              className={`w-full flex items-center justify-center gap-3 py-3 rounded-xl text-sm sm:text-base font-extrabold transition-all cursor-pointer ${
+                captionsEnabled && captionSegments.length > 0
+                  ? 'bg-white/10 hover:bg-white/15 border border-white/15 text-white'
+                  : 'btn-primary shadow-xl shadow-indigo-500/30'
+              }`}
             >
               <Download className="w-5 h-5" />
               <span>
@@ -341,7 +461,9 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                     ? 'Packaging Video...'
                     : needsConversion
                       ? `Convert & Download ${sizeLabel} MP4`
-                      : `Download ${sizeLabel} ${fileExt.toUpperCase()}`}
+                      : captionsEnabled && captionSegments.length > 0
+                        ? `Download Original (Without Burned Captions)`
+                        : `Download ${sizeLabel} ${fileExt.toUpperCase()}`}
               </span>
             </button>
 
