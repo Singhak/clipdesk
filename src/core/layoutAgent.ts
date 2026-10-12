@@ -533,33 +533,38 @@ export class LayoutAgent {
     const text = 'Made with ClipDesk';
 
     ctx.save();
-    const padX = 12;
-    const padY = 6;
-    const x = canvasWidth - 16;
-    const y = canvasHeight - 24;
+    const scale = Math.max(1, canvasWidth / 540);
+    const fontSize = Math.round(11 * scale);
+    const padX = Math.round(12 * scale);
+    const padY = Math.round(6 * scale);
+    const x = canvasWidth - Math.round(16 * scale);
+    const y = canvasHeight - Math.round(24 * scale);
 
-    ctx.font = '600 11px Outfit, sans-serif';
+    ctx.font = `600 ${fontSize}px Outfit, sans-serif`;
     const textWidth = ctx.measureText(text).width;
+    const pillHeight = Math.round(22 * scale);
+    const pillRadius = Math.round(11 * scale);
 
     // Pill background
     ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
     LayoutAgent.drawRoundedRect(
       ctx,
       x - textWidth - padX * 2,
-      y - 14 - padY,
+      y - fontSize - padY,
       textWidth + padX * 2,
-      22,
-      11
+      pillHeight,
+      pillRadius
     );
     ctx.fill();
 
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = Math.max(1, scale);
     ctx.stroke();
 
     // Text
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'right';
+    ctx.textBaseline = 'bottom';
     ctx.fillText(text, x - padX, y);
     ctx.restore();
   }

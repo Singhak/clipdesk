@@ -8,6 +8,7 @@ import { UpgradeModal } from './components/UpgradeModal';
 import { RecordingService } from './core/recordingService';
 import { LicenseService } from './licensing/licenseService';
 import { TEMPLATES } from './core/templateManager';
+import { recoveryService, SessionMetadata } from './core/recordingRecoveryService';
 import {
   TemplateId,
   RecordingSource,
@@ -60,6 +61,35 @@ export const App: React.FC = () => {
   const [captureWarnings, setCaptureWarnings] = useState<string[]>([]);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [recordedDuration, setRecordedDuration] = useState(0);
+
+  // Crash recovery state
+  const [recoverableSession, setRecoverableSession] = useState<{ metadata: SessionMetadata; blob: Blob } | null>(null);
+
+  // Inspect IndexedDB for recoverable sessions on page mount
+  useEffect(() => {
+    let cancelled = false;
+    void recoveryService.getRecoverableSession().then((session) => {
+      if (!cancelled && session && session.blob.size > 0) {
+        setRecoverableSession(session);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Protect against accidental tab close, reload, or back navigation during recording takes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (currentStep === 'studio' || (currentStep === 'export' && recordedBlob)) {
+        e.preventDefault();
+        e.returnValue = 'You have an active or unsaved recording session. Are you sure you want to exit?';
+        return e.returnValue;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [currentStep, recordedBlob]);
 
   // Sync with License changes
   useEffect(() => {
@@ -253,6 +283,46 @@ export const App: React.FC = () => {
             </button>
           </div>
         )}
+        {/* Unsaved Recording Recovered Alert */}
+        {recoverableSession && currentStep !== 'studio' && (
+          <div
+            role="status"
+            className="max-w-3xl mx-auto mt-4 px-4 py-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-sm text-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg animate-fadeIn"
+          >
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <span>
+                <strong>Unsaved Take Recovered:</strong> Found a {(recoverableSession.blob.size / 1e6).toFixed(1)} MB clip preserved in IndexedDB crash storage.
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => {
+                  setRecordedBlob(recoverableSession.blob);
+                  setRecordedDuration(recoverableSession.metadata.durationSeconds || 10);
+                  if (recoverableSession.metadata.layoutMode) {
+                    setLayoutMode(recoverableSession.metadata.layoutMode as LayoutMode);
+                  }
+                  setRecoverableSession(null);
+                  setCurrentStep('export');
+                }}
+                className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold cursor-pointer transition-colors"
+              >
+                Restore & Export
+              </button>
+              <button
+                onClick={() => {
+                  void recoveryService.clearSession(recoverableSession.metadata.id);
+                  setRecoverableSession(null);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-slate-300 cursor-pointer transition-colors"
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        )}
+
         {currentStep === 'welcome' && (
           <WelcomeScreen
             selectedTemplate={selectedTemplate}
@@ -287,6 +357,9 @@ export const App: React.FC = () => {
             onUpdateNoiseCancellation={(mode) => {
               setAudioConfig((prev) => ({ ...prev, noiseCancellation: mode }));
               recordingService.setNoiseCancellation(mode);
+            }}
+            onSelectMicDevice={(deviceId) => {
+              setAudioConfig((prev) => ({ ...prev, micDeviceId: deviceId }));
             }}
           />
         )}

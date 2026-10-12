@@ -1,4 +1,5 @@
 import { ExportSettings } from './types';
+import { recoveryService } from './recordingRecoveryService';
 
 export class ExportEngine {
   /** Escapes a file path or command argument for safe execution in shell command strings */
@@ -107,10 +108,18 @@ export class ExportEngine {
       videoBitsPerSecond: settings.includeWatermark ? 6000000 : 16000000 // Free: 6Mbps, Pro: 16Mbps
     });
 
+    const sessionId = `rec_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    void recoveryService.startSession(sessionId, {
+      mimeType,
+      layoutMode: settings.layout,
+      templateId: settings.templateId
+    });
+
     const chunks: Blob[] = [];
     recorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) {
         chunks.push(e.data);
+        void recoveryService.saveChunk(e.data);
       }
     };
 
@@ -134,11 +143,15 @@ export class ExportEngine {
         if (!stopPromise) {
           stopPromise = new Promise<Blob>((resolve) => {
             const handleStop = () => {
-              resolve(makeBlob());
+              const finalBlob = makeBlob();
+              void recoveryService.finalizeSession(0);
+              resolve(finalBlob);
             };
 
             if (recorder.state === 'inactive') {
-              resolve(makeBlob());
+              const finalBlob = makeBlob();
+              void recoveryService.finalizeSession(0);
+              resolve(finalBlob);
               return;
             }
 
@@ -156,7 +169,9 @@ export class ExportEngine {
             try {
               recorder.stop();
             } catch {
-              resolve(makeBlob());
+              const finalBlob = makeBlob();
+              void recoveryService.finalizeSession(0);
+              resolve(finalBlob);
             }
           });
         }

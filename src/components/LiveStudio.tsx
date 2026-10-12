@@ -21,6 +21,7 @@ import { FramingOverlay } from './FramingOverlay';
 import { FocusPicker } from './FocusPicker';
 import { DEFAULT_FOCUS, FocusRegion } from '../core/focusRegion';
 import { BubbleStyleControls } from './BubbleStyleControls';
+import { AudioMeter } from './AudioMeter';
 import { TemplateConfig, LayoutMode, SmartFeatures, LicenseInfo, ExportSettings, WebcamConfig } from '../core/types';
 import { ExportEngine } from '../core/exportEngine';
 
@@ -398,6 +399,13 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
             {formatTimer(elapsedSeconds)}
           </div>
 
+          {/* Live Microphone Meter */}
+          {audioStream && (
+            <div className="hidden sm:flex items-center">
+              <AudioMeter stream={audioStream} compact={true} />
+            </div>
+          )}
+
           {isSimulated && (
             <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-indigo-500/10 border border-indigo-500/20 text-xs text-indigo-300">
               <Sparkles className="w-3.5 h-3.5" />
@@ -425,6 +433,33 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
         </div>
       </div>
 
+      {/* Focus Framing Presets (Dynamic Crop Mode) */}
+      {usesFocus && (
+        <div className="mb-4 p-2.5 rounded-xl bg-black/40 border border-white/5 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-1.5 text-slate-300 font-semibold">
+            <Maximize2 className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Camera Focus Presets (Web Studio):</span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              { id: 'editor', label: '💻 Code Editor (Top-Left)', presetFocus: { cx: 0.28, cy: 0.35, zoom: 1.35 } },
+              { id: 'center', label: '🎯 Center Stage', presetFocus: { cx: 0.5, cy: 0.5, zoom: 1.0 } },
+              { id: 'terminal', label: '⚡ Terminal (Bottom)', presetFocus: { cx: 0.5, cy: 0.78, zoom: 1.4 } },
+              { id: 'browser', label: '🌐 Browser (Right)', presetFocus: { cx: 0.72, cy: 0.5, zoom: 1.35 } }
+            ].map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setFocus(p.presetFocus)}
+                className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/5 transition-all text-[11px] cursor-pointer"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Split View: Desktop Recording (Left) vs Live Vertical 9:16 Preview (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Column: Desktop Recording (7 Cols) */}
@@ -433,8 +468,11 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
             <div className="flex items-center justify-between mb-3.5">
               <div className="flex items-center gap-2">
                 <Maximize2 className="w-4 h-4 text-indigo-400" />
-                <h2 className="text-sm font-bold text-white">Desktop Recording Feed</h2>
+                <h2 className="text-sm font-bold text-white">Full Screen Desktop Feed</h2>
               </div>
+              <span className="text-[10px] text-slate-400 bg-white/5 px-2 py-0.5 rounded border border-white/5 hidden sm:inline">
+                Hover or click preview to steer camera. For OS-wide mouse tracking across native apps, use Desktop App.
+              </span>
               <div className="flex items-center gap-2">
                 {/* Mirror Shield Toggle Button */}
                 <button

@@ -28,18 +28,32 @@ async function loadFFmpeg(): Promise<FFmpeg> {
 
 /**
  * Converts a recorded WebM blob to H.264/AAC MP4 entirely in the browser.
- * The canvas is already 1080x1920, so only the container/codec changes.
+ * If the input blob is already MP4 (from Chrome 126+ or Safari), returns it immediately.
  */
 export async function convertToMp4(
   input: Blob,
   onProgress?: (ratio: number) => void
 ): Promise<Blob> {
+  if (!input || input.size === 0) {
+    throw new Error('Input video file is empty or missing.');
+  }
+
+  // Fast path: Already an MP4 video file!
+  if (input.type.toLowerCase().includes('mp4')) {
+    onProgress?.(1);
+    return input;
+  }
+
   const ff = await loadFFmpeg();
   const handler = ({ progress }: { progress: number }) =>
     onProgress?.(Math.min(1, Math.max(0, progress)));
   ff.on('progress', handler);
+
   try {
-    await ff.writeFile('in.webm', new Uint8Array(await input.arrayBuffer()));
+    const inputBytes = new Uint8Array(await input.arrayBuffer());
+    await ff.writeFile('in.webm', inputBytes);
+
+    // Run ultrafast x264 transcode with yuv420p for 100% compatibility with Reels, Shorts, and TikTok
     const code = await ff.exec([
       '-i', 'in.webm',
       '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
@@ -48,9 +62,18 @@ export async function convertToMp4(
       '-movflags', '+faststart',
       'out.mp4'
     ]);
-    if (code !== 0) throw new Error(`ffmpeg exited with code ${code}`);
+
+    if (code !== 0) {
+      throw new Error(`FFmpeg transcode returned non-zero code ${code}`);
+    }
+
     const data = (await ff.readFile('out.mp4')) as Uint8Array;
-    return new Blob([data as Uint8Array<ArrayBuffer>], { type: "video/mp4" });
+    return new Blob([data as Uint8Array<ArrayBuffer>], { type: 'video/mp4' });
+  } catch (err: any) {
+    console.error('In-browser MP4 transcode failed:', err);
+    throw new Error(
+      err?.message || 'In-browser MP4 conversion encountered a memory or codec error. You can download the raw WebM recording directly.'
+    );
   } finally {
     ff.off('progress', handler);
     await ff.deleteFile('in.webm').catch(() => {});

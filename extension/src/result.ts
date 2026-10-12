@@ -37,7 +37,17 @@ async function main(): Promise<void> {
   }
 
   const filename = `clipdesk_${new Date(rec.createdAt).toISOString().slice(0, 19).replace(/[:T]/g, '-')}.${ext}`;
-  $('download').addEventListener('click', () => ExportEngine.downloadBlob(rec.blob, filename));
+  const downloadBtn = $('download');
+  downloadBtn.textContent = `Download ${ext.toUpperCase()}`;
+  downloadBtn.addEventListener('click', () => ExportEngine.downloadBlob(rec.blob, filename));
+
+  const hintEl = $('format-hint');
+  if (hintEl) {
+    hintEl.textContent = ext === 'mp4'
+      ? 'Upload the MP4 straight to Instagram Reels, YouTube Shorts or TikTok.'
+      : 'WebM format recorded. Supported by YouTube and desktop players. Convert to MP4 for Instagram/TikTok mobile app upload.';
+  }
+
   $('delete').addEventListener('click', async () => {
     await deleteRecording(rec.id);
     URL.revokeObjectURL(url);

@@ -84,6 +84,8 @@ export interface LicenseInfo {
   expiresAt?: string;
   activatedAt?: string;
   planName: string;
+  isDemo?: boolean;
+  syncToken?: string;
 }
 
 export interface ExportSettings {
@@ -110,8 +112,8 @@ export interface WebcamConfig {
 export const getOutputSize = (mode: LayoutMode): { width: number; height: number } =>
   mode === 'widescreen' ? { width: 1920, height: 1080 } : { width: 1080, height: 1920 };
 
-/** Drawing coordinate space. Layouts draw in this space and the canvas is scaled up to getOutputSize. */
+/** Drawing coordinate space. Renders natively at full HiDPI resolution (1080x1920 / 1920x1080) for crystal clear mobile text. */
 export const getLogicalSize = (mode: LayoutMode): { width: number; height: number } => {
   const out = getOutputSize(mode);
-  return { width: out.width / 2, height: out.height / 2 };
+  return { width: out.width, height: out.height };
 };

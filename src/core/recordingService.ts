@@ -36,11 +36,15 @@ export class RecordingService {
       // 2. Request Mic if requested
       if (audioConfig.recordMic) {
         try {
+          const micConstraints: MediaTrackConstraints = {
+            echoCancellation: true,
+            noiseSuppression: true
+          };
+          if (audioConfig.micDeviceId) {
+            micConstraints.deviceId = { ideal: audioConfig.micDeviceId };
+          }
           this.micStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-              echoCancellation: true,
-              noiseSuppression: true
-            }
+            audio: micConstraints
           });
         } catch (err) {
           console.warn('Microphone permission denied or unavailable:', err);
@@ -88,8 +92,17 @@ export class RecordingService {
 
     if (audioConfig.recordMic) {
       try {
+        const camAudioConstraints: MediaTrackConstraints = {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1
+        };
+        if (audioConfig.micDeviceId) {
+          camAudioConstraints.deviceId = { ideal: audioConfig.micDeviceId };
+        }
         this.micStream = await navigator.mediaDevices.getUserMedia({
-          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 }
+          audio: camAudioConstraints
         });
       } catch (err) {
         console.warn('Microphone permission denied or unavailable:', err);

@@ -77,27 +77,42 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           </button>
         </div>
 
-        {/* Feature Chips */}
-        <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-6 mt-8 text-xs text-slate-400">
-          <span className="flex items-center gap-1.5">
-            <MousePointer2 className="w-3.5 h-3.5 text-indigo-400" />
-            <span>60 FPS Cursor Tracking</span>
-          </span>
-          <span className="text-white/20">•</span>
-          <span className="flex items-center gap-1.5">
-            <ZoomIn className="w-3.5 h-3.5 text-pink-400" />
-            <span>Click-Driven Auto Zoom</span>
-          </span>
-          <span className="text-white/20">•</span>
-          <span className="flex items-center gap-1.5">
-            <Layers className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Ambient Blur Backdrop</span>
-          </span>
-          <span className="text-white/20">•</span>
-          <span className="flex items-center gap-1.5">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Deterministic Rules (No AI)</span>
-          </span>
+        {/* Platform Ecosystem Banner */}
+        <div className="mt-8 p-3.5 rounded-2xl bg-black/40 border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-300">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+            <span>
+              <strong>Web Studio Active:</strong> For OS-wide mouse tracking across native apps (VS Code, terminal, etc.), install the{' '}
+              <a
+                href="https://github.com/singhak/clipdesk/releases"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-indigo-400 font-bold hover:underline"
+              >
+                Desktop App
+              </a>{' '}
+              or{' '}
+              <a
+                href="https://chrome.google.com/webstore"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-indigo-400 font-bold hover:underline"
+              >
+                Chrome Extension
+              </a>
+              .
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <a
+              href="https://github.com/singhak/clipdesk/releases"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] font-semibold text-white border border-white/10 transition-colors"
+            >
+              Get Desktop App
+            </a>
+          </div>
         </div>
       </div>
 

@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { InstagramIcon, YoutubeIcon } from './SocialIcons';
 import { BubbleStyleControls } from './BubbleStyleControls';
+import { AudioMeter } from './AudioMeter';
 import { RecordingSource, SmartFeatures, AudioConfig, NoiseSuppressionMode, TemplateId, LayoutMode, WebcamConfig } from '../core/types';
 import { TEMPLATES } from '../core/templateManager';
 
@@ -44,6 +45,7 @@ interface RecordingSetupProps {
   onSetCameraOnly: (v: boolean) => void;
   onUpdateZoomIntensity?: (intensity: 'subtle' | 'deep' | 'ultra') => void;
   onUpdateNoiseCancellation?: (mode: NoiseSuppressionMode) => void;
+  onSelectMicDevice?: (deviceId: string) => void;
 }
 
 export const RecordingSetup: React.FC<RecordingSetupProps> = ({
@@ -65,10 +67,63 @@ export const RecordingSetup: React.FC<RecordingSetupProps> = ({
   cameraOnly,
   onSetCameraOnly,
   onUpdateZoomIntensity,
-  onUpdateNoiseCancellation
+  onUpdateNoiseCancellation,
+  onSelectMicDevice
 }) => {
   const currentTemplate = TEMPLATES[selectedTemplate];
   const isWide = layoutMode === 'widescreen';
+
+  const [audioDevices, setAudioDevices] = React.useState<MediaDeviceInfo[]>([]);
+  const [testStream, setTestStream] = React.useState<MediaStream | null>(null);
+  const [isTestingMic, setIsTestingMic] = React.useState(false);
+
+  React.useEffect(() => {
+    let active = true;
+    const fetchDevices = async () => {
+      try {
+        if (!navigator.mediaDevices?.enumerateDevices) return;
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        if (active) {
+          const inputs = devices.filter((d) => d.kind === 'audioinput');
+          setAudioDevices(inputs);
+        }
+      } catch (e) {
+        console.warn('Failed to enumerate audio devices:', e);
+      }
+    };
+    void fetchDevices();
+    navigator.mediaDevices?.addEventListener?.('devicechange', fetchDevices);
+    return () => {
+      active = false;
+      navigator.mediaDevices?.removeEventListener?.('devicechange', fetchDevices);
+    };
+  }, []);
+
+  const handleToggleTestMic = async () => {
+    if (isTestingMic) {
+      testStream?.getTracks().forEach((t) => t.stop());
+      setTestStream(null);
+      setIsTestingMic(false);
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: audioConfig.micDeviceId
+            ? { deviceId: { ideal: audioConfig.micDeviceId } }
+            : true
+        });
+        setTestStream(stream);
+        setIsTestingMic(true);
+      } catch (e) {
+        console.warn('Could not start test microphone stream:', e);
+      }
+    }
+  };
+
+  React.useEffect(() => {
+    return () => {
+      testStream?.getTracks().forEach((t) => t.stop());
+    };
+  }, [testStream]);
 
   return (
     <div className="max-w-4xl mx-auto px-5 py-8 animate-fadeIn">
@@ -90,13 +145,37 @@ export const RecordingSetup: React.FC<RecordingSetupProps> = ({
         </div>
       </div>
 
-      <div className="text-center max-w-xl mx-auto mb-8">
+      <div className="text-center max-w-xl mx-auto mb-6">
         <h1 className="text-3xl font-black text-white tracking-tight">
           Recording Setup
         </h1>
         <p className="text-xs sm:text-sm text-slate-400 mt-2">
           Configure screen source, audio inputs, and smart deterministic camera rules.
         </p>
+      </div>
+
+      {/* Platform Sandbox Notice */}
+      <div className="mb-6 p-4 rounded-xl bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-transparent border border-indigo-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+        <div className="space-y-0.5">
+          <div className="font-bold text-white flex items-center gap-1.5">
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            <span>Web Browser Sandbox Notice</span>
+          </div>
+          <p className="text-slate-400 text-[11px] leading-relaxed">
+            Standard web browsers cannot track your OS mouse or clicks when working in external desktop apps (VS Code, terminal, etc.).
+            For automatic OS-wide cursor follow & click zoom across all apps, launch the ClipDesk Desktop App or Chrome Extension.
+          </p>
+        </div>
+        <div className="flex gap-2 shrink-0">
+          <a
+            href="https://github.com/singhak/clipdesk/releases"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold transition-all text-[11px]"
+          >
+            Get Desktop App
+          </a>
+        </div>
       </div>
 
       {/* Recording mode */}
@@ -266,45 +345,84 @@ export const RecordingSetup: React.FC<RecordingSetupProps> = ({
               </label>
 
               {audioConfig.recordMic && (
-                <div className="p-3.5 rounded-xl bg-black/40 border border-indigo-500/20 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
-                      <Wind className="w-3.5 h-3.5 text-indigo-400" />
-                      <span>Noise Cancellation</span>
-                    </span>
-                    <span className="text-[10px] text-indigo-400 font-bold bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">
-                      Fan, AC & Traffic Filter
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 leading-tight">
-                    Active High-Pass DSP cuts low-frequency traffic rumble and AC breeze, while the intelligent dynamic gate eliminates desk fan whir during speech pauses.
-                  </p>
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {[
-                      { id: 'studio', label: 'Studio Clear', desc: 'Kills fan/traffic + dynamic gate' },
-                      { id: 'fan_killer', label: 'Fan & Traffic Killer', desc: 'Heavy cut for loud fans & AC' },
-                      { id: 'mild', label: 'Mild Ambient', desc: 'Gentle room noise cut' },
-                      { id: 'off', label: 'Off / Raw', desc: 'Direct microphone feed' }
-                    ].map((m) => {
-                      const active = (audioConfig.noiseCancellation ?? 'studio') === m.id;
-                      return (
+                <>
+                  {/* Microphone Device Selection & Live VU Meter */}
+                  {audioDevices.length > 0 && (
+                    <div className="p-3.5 rounded-xl bg-black/40 border border-white/5 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-semibold text-slate-300">Choose Microphone Device</label>
                         <button
-                          key={m.id}
                           type="button"
-                          onClick={() => onUpdateNoiseCancellation?.(m.id as NoiseSuppressionMode)}
-                          className={`text-left p-2.5 rounded-lg border transition-all cursor-pointer ${
-                            active
-                              ? 'bg-indigo-600/25 border-indigo-500 text-white shadow-sm'
-                              : 'bg-black/20 border-white/5 text-slate-400 hover:text-white hover:bg-white/5'
+                          onClick={handleToggleTestMic}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded cursor-pointer transition-colors ${
+                            isTestingMic
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-white/5 text-slate-400 hover:text-white'
                           }`}
                         >
-                          <div className="text-xs font-bold">{m.label}</div>
-                          <div className="text-[10px] text-slate-400 mt-0.5">{m.desc}</div>
+                          {isTestingMic ? 'Stop Test' : 'Test Mic Level'}
                         </button>
-                      );
-                    })}
+                      </div>
+                      <select
+                        value={audioConfig.micDeviceId || ''}
+                        onChange={(e) => onSelectMicDevice?.(e.target.value)}
+                        className="w-full bg-black/60 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                      >
+                        <option value="">Default Microphone</option>
+                        {audioDevices.map((d, i) => (
+                          <option key={d.deviceId || i} value={d.deviceId}>
+                            {d.label || `Microphone ${i + 1}`}
+                          </option>
+                        ))}
+                      </select>
+                      {isTestingMic && testStream && (
+                        <div className="pt-2 animate-fadeIn">
+                          <AudioMeter stream={testStream} showLabels={true} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="p-3.5 rounded-xl bg-black/40 border border-indigo-500/20 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                        <Wind className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Noise Cancellation</span>
+                      </span>
+                      <span className="text-[10px] text-indigo-400 font-bold bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">
+                        Fan, AC & Traffic Filter
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-tight">
+                      Active High-Pass DSP cuts low-frequency traffic rumble and AC breeze, while the intelligent dynamic gate eliminates desk fan whir during speech pauses.
+                    </p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      {[
+                        { id: 'studio', label: 'Studio Clear', desc: 'Kills fan/traffic + dynamic gate' },
+                        { id: 'fan_killer', label: 'Fan & Traffic Killer', desc: 'Heavy cut for loud fans & AC' },
+                        { id: 'mild', label: 'Mild Ambient', desc: 'Gentle room noise cut' },
+                        { id: 'off', label: 'Off / Raw', desc: 'Direct microphone feed' }
+                      ].map((m) => {
+                        const active = (audioConfig.noiseCancellation ?? 'studio') === m.id;
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => onUpdateNoiseCancellation?.(m.id as NoiseSuppressionMode)}
+                            className={`text-left p-2.5 rounded-lg border transition-all cursor-pointer ${
+                              active
+                                ? 'bg-indigo-600/25 border-indigo-500 text-white shadow-sm'
+                                : 'bg-black/20 border-white/5 text-slate-400 hover:text-white hover:bg-white/5'
+                            }`}
+                          >
+                            <div className="text-xs font-bold">{m.label}</div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">{m.desc}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
+                </>
               )}
 
               <label
@@ -322,6 +440,14 @@ export const RecordingSetup: React.FC<RecordingSetupProps> = ({
                   className="w-4 h-4 accent-indigo-500 rounded cursor-pointer"
                 />
               </label>
+
+              {/* macOS System Audio Guidance */}
+              <div className="p-3 rounded-xl bg-black/30 border border-white/5 flex items-start gap-2.5 text-[11px] text-slate-400">
+                <ShieldCheck className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                <p>
+                  <strong className="text-slate-300">macOS Audio Notice:</strong> Browser security requires choosing "Share tab audio" in Chrome's tab sharing prompt. For full desktop system sound recording on macOS, launch the ClipDesk Desktop App.
+                </p>
+              </div>
             </div>
           </div>
 

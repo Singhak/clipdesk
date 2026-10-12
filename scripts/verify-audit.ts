@@ -159,4 +159,97 @@ assert.doesNotThrow(() => emptyMix.close());
 
 console.log('  ✅ Flaws 2.1 & 2.2: Audio mixing interface & null safety verified.\n');
 
-console.log('🎉 ALL 17 AUDIT FLAWS SUCCESSFULLY REMEDIATED AND VERIFIED!');
+// =========================================================================
+// Test 7: Commercial Security & Prefix Bypass Elimination (Audit Flaw 3.2)
+// =========================================================================
+console.log('▶ Test 7: License Security & Prefix Bypass Elimination (Audit Flaw 3.2)');
+const { LicenseService } = await import('../src/licensing/licenseService');
+
+// Ensure localStorage mock is present in Node environment
+if (typeof globalThis.localStorage === 'undefined') {
+  const store: Record<string, string> = {};
+  globalThis.localStorage = {
+    getItem: (k: string) => store[k] || null,
+    setItem: (k: string, v: string) => { store[k] = v; },
+    removeItem: (k: string) => { delete store[k]; },
+    clear: () => { Object.keys(store).forEach((k) => delete store[k]); },
+    key: (i: number) => Object.keys(store)[i] || null,
+    length: 0
+  };
+}
+
+// Prefix spoofing must FAIL
+const spoofRes = LicenseService.activateKey('PRO-HACKER-FREE-PASS');
+assert.equal(spoofRes.success, false, 'Arbitrary keys starting with PRO- must NOT activate Pro tier');
+
+// Legitimate VIP / pass keys must SUCCEED
+const vipRes = LicenseService.activateKey('CREATOR-PASS-2026');
+assert.equal(vipRes.success, true, 'Official VIP key must activate Pro tier');
+assert.equal(LicenseService.getLicense().tier, 'pro');
+
+// Demo trial key must activate clearly labeled trial pass
+const demoRes = LicenseService.activateKey('DEMO-CREATOR-2026');
+assert.equal(demoRes.success, true, 'Demo evaluation key must activate trial');
+assert.equal(LicenseService.getLicense().isDemo, true);
+
+LicenseService.resetToFree();
+assert.equal(LicenseService.getLicense().tier, 'free');
+console.log('  ✅ Flaw 3.2: Arbitrary client-side key bypass neutralized.\n');
+
+// =========================================================================
+// Test 8: Cross-Platform License Sync Token (Audit Flaw 3.3)
+// =========================================================================
+console.log('▶ Test 8: Cross-Platform License Sync Token (Audit Flaw 3.3)');
+LicenseService.activateKey('CREATOR-PASS-2026');
+const activeLicense = LicenseService.getLicense();
+const syncToken = LicenseService.createSyncToken(activeLicense);
+assert(syncToken.startsWith('CLIPSYNC_'), 'Sync token must be properly prefixed');
+
+// Simulate clean receiver on Desktop / Extension
+LicenseService.resetToFree();
+assert.equal(LicenseService.getLicense().tier, 'free');
+
+const importRes = LicenseService.importSyncToken(syncToken);
+assert.equal(importRes.success, true, 'Importing valid sync token must succeed');
+assert.equal(LicenseService.getLicense().tier, 'pro');
+console.log('  ✅ Flaw 3.3: Cross-platform license pairing & sync verified.\n');
+
+// =========================================================================
+// Test 9: Dynamic Animated Captions Generator (Audit Flaw 2.2)
+// =========================================================================
+console.log('▶ Test 9: Dynamic AI Animated Captions Generator (Audit Flaw 2.2)');
+const { CaptionEngine, CAPTION_STYLES } = await import('../src/core/captionEngine');
+
+assert(CAPTION_STYLES.viral_karaoke, 'Viral karaoke style defined');
+assert(CAPTION_STYLES.neon_cyber, 'Neon cyber style defined');
+assert(CAPTION_STYLES.minimal_clean, 'Minimal clean style defined');
+assert(CAPTION_STYLES.tiktok_punch, 'TikTok punch style defined');
+
+// Generate smart captions for 15s reel
+const segments = CaptionEngine.generateSmartCaptions(15);
+assert(segments.length >= 3, 'Smart captions must generate multiple phrase segments');
+segments.forEach((seg) => {
+  assert(seg.startSec >= 0 && seg.endSec <= 15, 'Caption timestamps must remain within clip bounds');
+  assert(seg.words.length > 0, 'Caption segment must break down into timed words for karaoke');
+});
+console.log('  ✅ Flaw 2.2: Dynamic caption generation and viral styles verified.\n');
+
+// =========================================================================
+// Test 10: Canvas HiDPI Native Logical Size & Framing (Audit Flaws 1.1, 2.3)
+// =========================================================================
+console.log('▶ Test 10: Canvas HiDPI Native Logical Size & Mobile Framing (Audit Flaws 1.1, 2.3)');
+const { getLogicalSize, getOutputSize } = await import('../src/core/types');
+
+const outVert = getOutputSize('dynamic_crop');
+const logVert = getLogicalSize('dynamic_crop');
+assert.equal(logVert.width, outVert.width, 'Logical canvas width must match 1080p native resolution (no 540px downsampling)');
+assert.equal(logVert.height, outVert.height, 'Logical canvas height must match 1920p native resolution (no 960px downsampling)');
+
+const outWide = getOutputSize('widescreen');
+const logWide = getLogicalSize('widescreen');
+assert.equal(logWide.width, 1920);
+assert.equal(logWide.height, 1080);
+console.log('  ✅ Flaws 1.1 & 2.3: Native HiDPI rendering verified without coordinate downsampling.\n');
+
+console.log('🎉 ALL AUDIT FLAWS SUCCESSFULLY REMEDIATED AND VERIFIED!');
+
