@@ -453,6 +453,116 @@ export class CaptionEngine {
   }
 
   /**
+   * Transcribes recorded video/audio completely on-device using Whisper.wasm (Transformers.js).
+   * Zero API keys required, 100% private, runs in-browser via WebAssembly.
+   */
+  public static async transcribeWithLocalWhisper(options: {
+    blob: Blob;
+    model?: 'Xenova/whisper-tiny.en' | 'Xenova/whisper-tiny';
+    language?: string;
+    onProgress?: (info: { status: string; progress?: number }) => void;
+  }): Promise<CaptionSegment[]> {
+    options.onProgress?.({ status: 'Decoding audio track from video take...', progress: 10 });
+
+    const arrayBuffer = await options.blob.arrayBuffer();
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) {
+      throw new Error('Web Audio API is not supported in this browser.');
+    }
+    const audioCtx = new AudioContextClass();
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+    // Resample to 16,000 Hz mono (Whisper requirement)
+    const targetSampleRate = 16000;
+    const offlineCtx = new OfflineAudioContext(
+      1,
+      Math.max(1, Math.round(audioBuffer.duration * targetSampleRate)),
+      targetSampleRate
+    );
+    const source = offlineCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(offlineCtx.destination);
+    source.start();
+    const resampled = await offlineCtx.startRendering();
+    const audioData = resampled.getChannelData(0);
+    await audioCtx.close();
+
+    options.onProgress?.({ status: 'Loading Whisper.wasm neural model (~39MB)...', progress: 25 });
+    const { pipeline, env } = await import('@xenova/transformers');
+    env.allowLocalModels = false;
+    env.useBrowserCache = true;
+
+    const modelName =
+      options.model ||
+      (options.language === 'en' || !options.language ? 'Xenova/whisper-tiny.en' : 'Xenova/whisper-tiny');
+
+    const transcriber = await pipeline('automatic-speech-recognition', modelName, {
+      quantized: true,
+      progress_callback: (p: any) => {
+        if (p?.status === 'progress' && typeof p?.progress === 'number') {
+          options.onProgress?.({
+            status: `Downloading Whisper model (${p.file || 'weights'}): ${Math.round(p.progress)}%`,
+            progress: Math.min(80, Math.round(25 + p.progress * 0.55))
+          });
+        }
+      }
+    });
+
+    options.onProgress?.({ status: 'Transcribing speech with WebAssembly Whisper...', progress: 85 });
+    const result = await transcriber(audioData, {
+      chunk_length_s: 30,
+      stride_length_s: 5,
+      return_timestamps: 'word',
+      language: options.language && options.language !== 'auto' ? options.language : undefined
+    });
+
+    const segments: CaptionSegment[] = [];
+    const chunks = (result as any)?.chunks || [];
+
+    if (Array.isArray(chunks) && chunks.length > 0) {
+      let currentWords: CaptionWord[] = [];
+      let segStart = 0;
+      let segEnd = 0;
+
+      for (let i = 0; i < chunks.length; i++) {
+        const c = chunks[i];
+        const wordText = (c.text || '').trim();
+        if (!wordText) continue;
+
+        const start = Array.isArray(c.timestamp) ? c.timestamp[0] ?? 0 : (c.timestamp?.start ?? 0);
+        const end = Array.isArray(c.timestamp) ? c.timestamp[1] ?? (start + 0.4) : (c.timestamp?.end ?? (start + 0.4));
+
+        if (currentWords.length === 0) segStart = start;
+        segEnd = Math.max(segEnd, end);
+
+        currentWords.push({
+          word: wordText,
+          startSec: Math.round(start * 100) / 100,
+          endSec: Math.round(end * 100) / 100
+        });
+
+        // Group into ~5-7 words per caption segment or punctuation break
+        const hasBreak = /[.?!,]$/.test(wordText) || currentWords.length >= 6;
+        if (hasBreak || i === chunks.length - 1) {
+          segments.push({
+            id: `local_whisper_${segments.length}_${Date.now()}`,
+            text: currentWords.map((w) => w.word).join(' '),
+            startSec: Math.round(segStart * 100) / 100,
+            endSec: Math.round(segEnd * 100) / 100,
+            words: [...currentWords]
+          });
+          currentWords = [];
+        }
+      }
+    } else if (typeof (result as any)?.text === 'string' && (result as any).text.trim()) {
+      return generateSegmentsFromText((result as any).text.trim(), audioBuffer.duration || 10);
+    }
+
+    options.onProgress?.({ status: 'Transcription complete!', progress: 100 });
+    return segments;
+  }
+
+  /**
    * Parses standard SubRip (.srt) or WebVTT (.vtt) file content into timed CaptionSegments
    */
   public static parseSrtOrVtt(content: string): CaptionSegment[] {

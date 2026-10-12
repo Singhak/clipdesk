@@ -17,10 +17,16 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# Environment
+# Environment & Certificates
 .env
 .env.local
 .env.*.local
+certs/
+*.pfx
+
+# Large distribution binaries in public/downloads (keep zip, ignore heavy installers)
+public/downloads/*.exe
+public/downloads/*.msi
 
 # Editor / IDE / Agent local data
 .claude/

@@ -13,14 +13,17 @@
     "build:desktop": "tsc && vite build -c vite.electron.config.ts && vite build -c vite.electron-main.config.ts",
     "desktop": "npm run build:desktop && node scripts/run-electron.mjs",
     "desktop:start": "node scripts/run-electron.mjs",
-    "icons": "node scripts/make-extension-icons.mjs",
-    "dist:desktop": "npm run build:desktop && electron-builder -c.electronDist=node_modules/electron/dist"
+    "dist:desktop": "npm run build:desktop && electron-builder --win",
+    "dist:win": "npm run build:desktop && electron-builder --win",
+    "package:downloads": "node scripts/package-downloads.mjs",
+    "package:all": "npm run build && npm run build:desktop && npm run build:ext && node scripts/package-downloads.mjs"
   },
   "dependencies": {
     "@ffmpeg/core": "^0.12.10",
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
     "@tailwindcss/vite": "^4.3.3",
+    "@xenova/transformers": "^2.17.2",
     "clsx": "^2.1.1",
     "ffmpeg-static": "^5.3.0",
     "lucide-react": "^1.16.0",
@@ -61,14 +64,29 @@
       "node_modules/uiohook-napi/**/*",
       "node_modules/ffmpeg-static/**/*"
     ],
+    "electronDist": "node_modules/electron/dist",
     "win": {
       "target": [
         "nsis"
-      ]
+      ],
+      "signtoolOptions": {
+        "signingHashAlgorithms": [
+          "sha256"
+        ]
+      }
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ClipDesk",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "msi": {
+      "oneClick": false,
+      "shortcutName": "ClipDesk",
+      "artifactName": "${productName}-${version}.${ext}"
     },
     "mac": {
       "target": [

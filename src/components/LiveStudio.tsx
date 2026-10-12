@@ -958,22 +958,89 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2.5">
+            {/* Download Options */}
+            <div className="space-y-3 pt-1">
+              <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+                Direct Downloads
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {/* Windows NSIS Setup (.exe) */}
+                <a
+                  href="/downloads/ClipDesk-Setup-1.0.0.exe"
+                  download="ClipDesk-Setup-1.0.0.exe"
+                  className="flex items-center justify-between p-3 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-white transition-all group cursor-pointer"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-lg bg-indigo-600 text-white shadow-md">
+                      <Download className="w-4 h-4" />
+                    </div>
+                    <div className="text-left">
+                      <div className="text-xs font-bold text-white group-hover:text-indigo-200">
+                        Windows Installer (.exe)
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        Signed NSIS Setup · Windows 10/11
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-[11px] font-bold text-indigo-400">.exe ➔</span>
+                </a>
+
+                {/* Windows MSI Installer (.msi) */}
+                <a
+                  href="/downloads/ClipDesk-1.0.0.msi"
+                  download="ClipDesk-1.0.0.msi"
+                  className="flex items-center justify-between p-3 rounded-xl bg-black/40 hover:bg-black/60 border border-white/10 text-white transition-all group cursor-pointer"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="p-2 rounded-lg bg-white/10 text-slate-200">
+                      <Download className="w-4 h-4" />
+                    </div>
+                    <div className="text-left">
+                      <div className="text-xs font-bold text-white group-hover:text-indigo-200">
+                        Enterprise MSI (.msi)
+                      </div>
+                      <div className="text-[10px] text-slate-400">
+                        Silent install / IT deployment
+                      </div>
+                    </div>
+                  </div>
+                  <span className="text-[11px] font-bold text-slate-400">.msi ➔</span>
+                </a>
+              </div>
+
+              {/* Chrome Extension Download Card */}
+              <div className="p-3.5 rounded-xl bg-gradient-to-r from-amber-500/10 via-black/40 to-indigo-500/10 border border-amber-500/25 space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-white">🧩 Chrome / Edge Extension</span>
+                    <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 font-bold">
+                      Pre-Packaged
+                    </span>
+                  </div>
+                  <a
+                    href="/downloads/clipdesk-extension.zip"
+                    download="clipdesk-extension.zip"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs shadow-md shadow-amber-500/20 cursor-pointer transition-all"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download .zip (105 KB)</span>
+                  </a>
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  Quick Install: <strong>1.</strong> Download & unzip · <strong>2.</strong> Open <code className="text-amber-300 font-mono">chrome://extensions</code> · <strong>3.</strong> Enable &apos;Developer mode&apos; and click &apos;Load unpacked&apos;.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
               <button
-                onClick={() => {
-                  window.open('https://github.com/Singhak/clipdesk/releases', '_blank');
-                  setIsDesktopModalOpen(false);
-                }}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
-              >
-                <Download className="w-4 h-4" />
-                <span>Download Desktop (.exe / .dmg)</span>
-              </button>
-              <button
+                type="button"
                 onClick={() => setIsDesktopModalOpen(false)}
-                className="py-2.5 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-semibold cursor-pointer"
+                className="py-2 px-5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 text-xs font-semibold cursor-pointer transition-all"
               >
-                Continue in Web Studio
+                Close & Continue in Web Studio
               </button>
             </div>
           </div>
