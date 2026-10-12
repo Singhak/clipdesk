@@ -86,7 +86,7 @@ function showLauncher(): void {
     height: 760,
     minWidth: 400,
     minHeight: 560,
-    title: 'ReelScreen',
+    title: 'ClipDesk',
     icon: ICON,
     backgroundColor: '#07080c',
     autoHideMenuBar: true,
@@ -136,7 +136,7 @@ function showControls(): void {
     ...BAR_SIZE,
     x: Math.round(area.x + (area.width - BAR_SIZE.width) / 2),
     y: Math.round(area.y + area.height - BAR_SIZE.height - 24),
-    title: 'ReelScreen controls'
+    title: 'ClipDesk controls'
   });
   void controls.loadFile(pageUrl('controls.html'));
   controls.on('closed', () => (controls = null));
@@ -151,7 +151,7 @@ function showCountdown(): void {
     height: size,
     x: Math.round(area.x + (area.width - size) / 2),
     y: Math.round(area.y + (area.height - size) / 2),
-    title: 'ReelScreen countdown'
+    title: 'ClipDesk countdown'
   });
   void countdown.loadFile(pageUrl('countdown.html'));
   countdown.on('closed', () => (countdown = null));
@@ -173,7 +173,7 @@ function showCameraBubble(): void {
     height: size,
     x,
     y,
-    title: 'ReelScreen camera bubble'
+    title: 'ClipDesk camera bubble'
   });
   void cameraBubble.loadFile(pageUrl('camera.html'));
   cameraBubble.on('closed', () => (cameraBubble = null));
@@ -195,7 +195,7 @@ function showResult(id: string): void {
   const win = new BrowserWindow({
     width: wide ? 1000 : 560,
     height: wide ? 800 : 940,
-    title: 'ReelScreen recording',
+    title: 'ClipDesk recording',
     icon: ICON,
     backgroundColor: '#07080c',
     autoHideMenuBar: true,
@@ -297,7 +297,7 @@ async function startRecording(next: DesktopConfig): Promise<void> {
     if (config.camera) await systemPreferences.askForMediaAccess('camera');
     if (config.mic) await systemPreferences.askForMediaAccess('microphone');
     if (systemPreferences.getMediaAccessStatus('screen') === 'denied') {
-      setState({ error: 'Allow ReelScreen under System Settings → Privacy & Security → Screen Recording, then reopen it.' });
+      setState({ error: 'Allow ClipDesk under System Settings → Privacy & Security → Screen Recording, then reopen it.' });
       return;
     }
   }
@@ -317,7 +317,7 @@ async function startRecording(next: DesktopConfig): Promise<void> {
     show: false,
     width: 540,
     height: 960,
-    title: 'ReelScreen recorder',
+    title: 'ClipDesk recorder',
     webPreferences: baseWebPreferences({ backgroundThrottling: false })
   });
   recorder.on('closed', () => {
@@ -449,7 +449,7 @@ function refreshTray(): void {
   if (!tray) return;
   const recording = state.status === 'recording' || state.status === 'paused';
   const label =
-    state.status === 'idle' ? 'ReelScreen' : `ReelScreen: ${state.status} ${recording ? formatTime(elapsedMs(state)) : ''}`.trim();
+    state.status === 'idle' ? 'ClipDesk' : `ClipDesk: ${state.status} ${recording ? formatTime(elapsedMs(state)) : ''}`.trim();
   tray.setToolTip(label);
   tray.setContextMenu(
     Menu.buildFromTemplate([
@@ -461,7 +461,7 @@ function refreshTray(): void {
             { type: 'separator' as const }
           ]
         : []),
-      { label: 'Open ReelScreen', click: () => showLauncher() },
+      { label: 'Open ClipDesk', click: () => showLauncher() },
       { label: 'Open recordings folder', click: () => void recordingsDir().then((d) => shell.openPath(d)) },
       { type: 'separator' },
       { label: 'Quit', click: () => app.quit() }
@@ -479,7 +479,7 @@ function createTray(): void {
 // ---------- saving ----------
 
 async function recordingsDir(): Promise<string> {
-  const dir = path.join(app.getPath('videos'), 'ReelScreen');
+  const dir = path.join(app.getPath('videos'), 'ClipDesk');
   await fs.mkdir(dir, { recursive: true });
   return dir;
 }
@@ -490,7 +490,7 @@ async function saveRecording(req: SaveRequest): Promise<SavedRecording> {
   const d = new Date(createdAt);
   const pad = (n: number) => String(n).padStart(2, '0');
   const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
-  const baseName = `ReelScreen ${stamp}`;
+  const baseName = `ClipDesk ${stamp}`;
   const rawFile = path.join(await recordingsDir(), `${baseName}.${req.extension}`);
   const bytes = Buffer.from(req.bytes);
   await fs.writeFile(rawFile, bytes);
@@ -706,7 +706,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('second-instance', () => (isActive(state) ? undefined : showLauncher()));
 
   void app.whenReady().then(() => {
-    if (process.platform === 'win32') app.setAppUserModelId('ai.ruh.reelscreen');
+    if (process.platform === 'win32') app.setAppUserModelId('ai.ruh.clipdesk');
     installCaptureHandlers();
     registerIpc();
     createTray();

@@ -67,7 +67,7 @@ async function startCamera(): Promise<boolean> {
   } catch {
     warnings.push(
       reel.platform === 'darwin'
-        ? 'The camera is blocked, so the camera bubble is off. Allow ReelScreen in System Settings → Privacy & Security → Camera.'
+        ? 'The camera is blocked, so the camera bubble is off. Allow ClipDesk in System Settings → Privacy & Security → Camera.'
         : 'The camera is blocked or unavailable, so the camera bubble is off. Check Settings → Privacy & security → Camera.'
     );
     return false;

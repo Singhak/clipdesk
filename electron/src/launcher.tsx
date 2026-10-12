@@ -15,7 +15,7 @@ import {
 } from '../shared';
 
 const reel = window.reel;
-const CONFIG_STORAGE = 'reelscreen.desktopConfig';
+const CONFIG_STORAGE = 'clipdesk.desktopConfig';
 
 const LAYOUTS: { id: DesktopLayout; label: string; hint: string }[] = [
   { id: 'dynamic_crop', label: 'Follow cursor', hint: '9:16 crop that follows your mouse and zooms on clicks' },
@@ -159,7 +159,7 @@ const Launcher: React.FC = () => {
     <main className="p-5 space-y-5">
       <header className="flex items-center gap-2">
         <img src="icons/icon-32.png" alt="" className="w-7 h-7" />
-        <h1 className="text-[17px] font-extrabold">ReelScreen</h1>
+        <h1 className="text-[17px] font-extrabold">ClipDesk</h1>
         <span className="ml-auto text-[10px] font-bold text-indigo-300 bg-indigo-500/15 px-2 py-0.5 rounded-full">9:16 RECORDER</span>
       </header>
 
