@@ -1,0 +1,99 @@
+{
+  "name": "reelscreen",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "OBS for Reels - A Vertical Content Workspace for Desktop Creators",
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "build:ext": "tsc && vite build -c vite.extension.config.ts && vite build -c vite.content.config.ts",
+    "build:desktop": "tsc && vite build -c vite.electron.config.ts && vite build -c vite.electron-main.config.ts",
+    "desktop": "npm run build:desktop && node scripts/run-electron.mjs",
+    "desktop:start": "node scripts/run-electron.mjs",
+    "icons": "node scripts/make-extension-icons.mjs",
+    "dist:desktop": "npm run build:desktop && electron-builder -c.electronDist=node_modules/electron/dist"
+  },
+  "dependencies": {
+    "@ffmpeg/core": "^0.12.10",
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
+    "@tailwindcss/vite": "^4.3.3",
+    "clsx": "^2.1.1",
+    "ffmpeg-static": "^5.3.0",
+    "lucide-react": "^1.16.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwindcss": "^4.3.3",
+    "uiohook-napi": "^1.5.5"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.287",
+    "@types/node": "^22.13.1",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0"
+  },
+  "author": "ReelScreen",
+  "build": {
+    "appId": "ai.ruh.reelscreen",
+    "productName": "ReelScreen",
+    "directories": {
+      "output": "dist-desktop",
+      "buildResources": "electron/build"
+    },
+    "files": [
+      "dist-electron/**/*",
+      "!dist-electron/**/*.map",
+      "package.json",
+      "!node_modules/**/*",
+      "node_modules/uiohook-napi/**/*",
+      "node_modules/ffmpeg-static/**/*",
+      "node_modules/node-gyp-build/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/uiohook-napi/**/*",
+      "node_modules/ffmpeg-static/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.video",
+      "extendInfo": {
+        "NSCameraUsageDescription": "ReelScreen shows your camera in the recording.",
+        "NSMicrophoneUsageDescription": "ReelScreen records your voice-over."
+      }
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "AudioVideo"
+    },
+    "npmRebuild": false,
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true,
+      "enableCookieEncryption": true
+    }
+  }
+}
