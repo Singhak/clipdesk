@@ -1,0 +1,21 @@
+# Force HTTPS (screen/camera/mic capture only works on secure origins)
+RewriteEngine On
+RewriteCond %{HTTPS} off
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# Single-page app fallback
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.html [L]
+
+# Allow screen capture on this origin
+<IfModule mod_headers.c>
+  Header always set Permissions-Policy "display-capture=(self), camera=(self), microphone=(self)"
+</IfModule>
+
+# Cache hashed assets
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType application/javascript "access plus 1 year"
+  ExpiresByType text/css "access plus 1 year"
+</IfModule>
