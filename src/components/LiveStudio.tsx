@@ -183,7 +183,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   // Show recording state in the tab title so it is visible in the tab strip too
   useEffect(() => {
     const original = document.title;
-    if (isRecording) document.title = `${isPaused ? '⏸' : '●'} ${formatTimer(elapsedSeconds)} – ReelScreen`;
+    if (isRecording) document.title = `${isPaused ? '⏸' : '●'} ${formatTimer(elapsedSeconds)} – ClipDesk`;
     return () => {
       document.title = original;
     };

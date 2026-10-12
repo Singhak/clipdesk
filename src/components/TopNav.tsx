@@ -44,7 +44,7 @@ export const TopNav: React.FC<TopNavProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <span className="font-extrabold text-lg tracking-tight text-white group-hover:text-indigo-200 transition-colors">
-                ReelScreen
+                ClipDesk
               </span>
               <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
                 OBS for Reels

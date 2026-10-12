@@ -135,7 +135,7 @@ export const CountdownOverlay: React.FC<CountdownOverlayProps> = ({
             <span>Switch to your target window now...</span>
           </div>
           <p className="text-xs text-slate-400">
-            ReelScreen will begin 60 FPS recording with cursor tracking in a moment.
+            ClipDesk will begin 60 FPS recording with cursor tracking in a moment.
           </p>
         </div>
       </div>

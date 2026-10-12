@@ -75,7 +75,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
   const saveBlob = (blob: Blob) => {
     const ext = ExportEngine.extensionFor(blob);
-    const filename = `reelscreen_${new Date().toISOString().slice(0, 10)}_${Date.now().toString().slice(-4)}.${ext}`;
+    const filename = `clipdesk_${new Date().toISOString().slice(0, 10)}_${Date.now().toString().slice(-4)}.${ext}`;
     ExportEngine.downloadBlob(blob, filename);
   };
 
@@ -184,7 +184,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           {lostFootage && (
             <div role="alert" className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200">
               This file is only {fileDuration!.toFixed(1)} seconds long, but you recorded for {formatTimer(durationSeconds)}, so part of
-              the recording was lost. Keep this tab open while recording, or use the ReelScreen Chrome extension, which keeps recording
+              the recording was lost. Keep this tab open while recording, or use the ClipDesk Chrome extension, which keeps recording
               while you work in other windows.
             </div>
           )}
@@ -217,7 +217,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   {isPro ? (
                     <span className="text-emerald-400 font-semibold">Removed (Pro Plan)</span>
                   ) : (
-                    <span className="text-amber-400 font-semibold">Enabled ("Made with ReelScreen")</span>
+                    <span className="text-amber-400 font-semibold">Enabled ("Made with ClipDesk")</span>
                   )}
                 </div>
                 <div className="text-[11px] text-slate-400 mt-0.5">

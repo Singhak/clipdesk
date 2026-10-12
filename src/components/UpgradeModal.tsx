@@ -66,7 +66,7 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, lic
         <div className="text-center max-w-md mx-auto mb-8">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold mb-3">
             <Crown className="w-3.5 h-3.5" />
-            <span>REELSCREEN PRO CREATOR</span>
+            <span>CLIPDESK PRO CREATOR</span>
           </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
             Level Up Your Vertical Video
@@ -93,7 +93,7 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, lic
               </li>
               <li className="flex items-center gap-2 text-slate-400">
                 <span className="w-4 h-4 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center text-[10px] shrink-0 font-bold">!</span>
-                <span>Includes ReelScreen watermark badge</span>
+                <span>Includes ClipDesk watermark badge</span>
               </li>
               <li className="flex items-center gap-2 text-slate-400">
                 <span className="w-4 h-4 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center text-[10px] shrink-0 font-bold">!</span>

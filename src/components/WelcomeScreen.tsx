@@ -54,7 +54,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
 
         {/* Subtitle */}
         <p className="text-base sm:text-lg text-slate-300 leading-relaxed max-w-2xl mx-auto mb-8">
-          Record your desktop normally. ReelScreen dynamically pans, centers your cursor at 60 FPS, and crops into viral 9:16 vertical shorts for Instagram, TikTok, and YouTube.
+          Record your desktop normally. ClipDesk dynamically pans, centers your cursor at 60 FPS, and crops into viral 9:16 vertical shorts for Instagram, TikTok, and YouTube.
         </p>
 
         {/* Action Buttons */}
