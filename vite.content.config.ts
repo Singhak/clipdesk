@@ -10,7 +10,7 @@ export default defineConfig({
     lib: {
       entry: resolve(__dirname, 'extension/src/content.ts'),
       formats: ['iife'],
-      name: 'ReelScreenContent',
+      name: 'ClipDeskContent',
       fileName: () => 'content.js'
     }
   }

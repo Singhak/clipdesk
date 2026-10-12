@@ -1,4 +1,4 @@
-# ReelScreen
+# ClipDesk
 
 Record your screen, mic and webcam in the browser and export a vertical 9:16 video for Reels, Shorts and TikTok. Recordings stay on your device; nothing is uploaded.
 
@@ -36,13 +36,13 @@ The app has no backend, so shared hosting is enough. The build uses relative pat
 4. Stop, then Download. The file is MP4 where the browser records it natively (Chrome 126+, Safari). Otherwise the app converts the WebM to H.264/AAC MP4 on your device with ffmpeg.wasm; the first conversion downloads about 30 MB, and a failed conversion offers the WebM instead.
 
 ## Chrome extension (Loom-style)
-The extension records the current tab or your screen in the background, with floating controls on every web page, so you don't have to keep the ReelScreen tab in front.
+The extension records the current tab or your screen in the background, with floating controls on every web page, so you don't have to keep the ClipDesk tab in front.
 
 ```
 npm run build:ext   # output in dist-extension/
 ```
 1. Open `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and pick the `dist-extension` folder. It needs Chrome 126 or later.
-2. Pin ReelScreen in the toolbar, open the popup, and click **Allow camera & mic** once.
+2. Pin ClipDesk in the toolbar, open the popup, and click **Allow camera & mic** once.
 3. Choose **This tab** or **Screen or window**, pick a format, and press **Start recording**.
 4. Control the recording from the floating bar on the page, the toolbar popup, or the shortcuts Alt+Shift+P (pause) and Alt+Shift+S (stop). To make the shortcuts work outside Chrome, change them in `chrome://extensions/shortcuts`.
 5. When you stop, a tab opens with the MP4 to download.
@@ -60,12 +60,12 @@ The Electron app records any screen with Loom-style floating controls that are *
 
 ```
 npm run desktop        # build and start
-npm run dist:desktop   # build the installer into dist-desktop/ (on Windows: "ReelScreen Setup 1.0.0.exe")
+npm run dist:desktop   # build the installer into dist-desktop/ (on Windows: "ClipDesk Setup 1.0.0.exe")
 ```
 1. Pick a screen (or a window), a format and a camera style, then press **Start recording**.
 2. After a 3-2-1 countdown, the launcher hides and a floating bar appears at the bottom of the screen: timer, pause, stop, camera toggle, discard and minimize. Drag it by its grip.
 3. Pause and stop also work from anywhere with Alt+Shift+P and Alt+Shift+S, and from the tray icon.
-4. When you stop, the MP4 is saved to `Videos\ReelScreen` and a window opens to preview it, show it in the folder, save a copy or delete it (to the Recycle Bin).
+4. When you stop, the MP4 is saved to `Videos\ClipDesk` and a window opens to preview it, show it in the folder, save a copy or delete it (to the Recycle Bin).
 
 How it works:
 - **Recorder:** a hidden window captures the screen, composites the reel and encodes the MP4, using the same engine as the web app and extension.
@@ -77,7 +77,7 @@ Desktop limitations:
 - System audio recording is Windows-only.
 - Hiding the controls from capture needs Windows 10 version 2004 or later. On macOS 15 and later, some capture paths ignore it.
 - The installer isn't code-signed, so Windows SmartScreen and macOS Gatekeeper warn on first launch. Sign it before distributing.
-- To record on macOS, allow ReelScreen under System Settings → Privacy & Security → Screen Recording (and Camera / Microphone).
+- To record on macOS, allow ClipDesk under System Settings → Privacy & Security → Screen Recording (and Camera / Microphone).
 - If `npm run desktop` fails with "Cannot read properties of undefined (reading 'commandLine')", `ELECTRON_RUN_AS_NODE` is set in your shell. `scripts/run-electron.mjs` clears it; don't run `electron .` directly from VS Code's terminal.
 
 ## Known limitations

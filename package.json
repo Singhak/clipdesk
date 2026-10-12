@@ -1,5 +1,5 @@
 {
-  "name": "reelscreen",
+  "name": "clipdesk",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -40,10 +40,10 @@
     "typescript": "^5.7.3",
     "vite": "^6.1.0"
   },
-  "author": "ReelScreen",
+  "author": "ClipDesk",
   "build": {
-    "appId": "ai.ruh.reelscreen",
-    "productName": "ReelScreen",
+    "appId": "ai.ruh.clipdesk",
+    "productName": "ClipDesk",
     "directories": {
       "output": "dist-desktop",
       "buildResources": "electron/build"
@@ -76,8 +76,8 @@
       ],
       "category": "public.app-category.video",
       "extendInfo": {
-        "NSCameraUsageDescription": "ReelScreen shows your camera in the recording.",
-        "NSMicrophoneUsageDescription": "ReelScreen records your voice-over."
+        "NSCameraUsageDescription": "ClipDesk shows your camera in the recording.",
+        "NSMicrophoneUsageDescription": "ClipDesk records your voice-over."
       }
     },
     "linux": {

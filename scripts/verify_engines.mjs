@@ -1,6 +1,6 @@
 import assert from 'assert';
 
-console.log('🧪 Starting ReelScreen Engine Validation Tests...\n');
+console.log('🧪 Starting ClipDesk Engine Validation Tests...\n');
 
 // 1. Validate Camera Math
 function testCameraMath() {
@@ -73,18 +73,18 @@ function testFFmpegBuilder() {
     if (watermark) {
       filter = filter.replace(
         '[v]"',
-        `[v0]; [v0]drawtext=text='Made with ReelScreen':x=w-tw-30:y=h-th-40:fontsize=24:fontcolor=white@0.8:box=1:boxcolor=black@0.5:boxborderw=10[v]"`
+        `[v0]; [v0]drawtext=text='Made with ClipDesk':x=w-tw-30:y=h-th-40:fontsize=24:fontcolor=white@0.8:box=1:boxcolor=black@0.5:boxborderw=10[v]"`
       );
     }
     return `ffmpeg -y -i "raw.mp4" -filter_complex ${filter} -map "[v]" -c:v libx264 -preset fast output.mp4`;
   }
 
   const freeCmd = buildCmd(true, 'blur_backdrop');
-  assert(freeCmd.includes('Made with ReelScreen'), 'Free tier includes watermark text filter');
+  assert(freeCmd.includes('Made with ClipDesk'), 'Free tier includes watermark text filter');
   assert(freeCmd.includes('boxblur=25:5'), 'Ambient blur filter enabled');
 
   const proCmd = buildCmd(false, 'blur_backdrop');
-  assert(!proCmd.includes('Made with ReelScreen'), 'Pro tier completely removes watermark text filter');
+  assert(!proCmd.includes('Made with ClipDesk'), 'Pro tier completely removes watermark text filter');
   console.log('  ✔ Free tier watermark filter validated');
   console.log('  ✔ Pro tier watermark-free pipeline validated');
 }
