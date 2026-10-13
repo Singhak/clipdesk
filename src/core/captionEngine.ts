@@ -580,12 +580,18 @@ export class CaptionEngine {
     const audioData = resampled.getChannelData(0);
     await audioCtx.close();
 
+    const requested = options.language && options.language !== 'auto' ? options.language : undefined;
+    // The English-only model can't transcribe another language, so a non-English pick needs the multilingual one
     const modelName =
-      options.model ||
-      (options.language === 'en' || !options.language ? 'Xenova/whisper-tiny.en' : 'Xenova/whisper-tiny');
+      requested && requested !== 'en'
+        ? 'Xenova/whisper-tiny'
+        : options.model || 'Xenova/whisper-tiny.en';
+
+    // English-only (.en) models have no language token; forcing one makes them return empty text
+    const language = modelName.endsWith('.en') ? undefined : requested;
 
     // Inference runs in a worker so the page doesn't freeze during a long transcription
-    const result = await runWhisperWorker({ audio: audioData, model: modelName, language: options.language }, (m) =>
+    const result = await runWhisperWorker({ audio: audioData, model: modelName, language }, (m) =>
       options.onProgress?.(m)
     );
 
