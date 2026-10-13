@@ -242,6 +242,7 @@ async function main(): Promise<void> {
       warnings.push('Microphone is blocked or unavailable, so there is no voice-over. Use "Allow camera & mic" in the ClipDesk popup.');
     }
   }
+  webcamConfig.background = config.cameraBackground ?? 'none';
   if (config.camera) webcamConfig.enabled = await startCamera();
 
   // Mic first: if the two can't be mixed, keep the voice-over

@@ -3,6 +3,7 @@ import { ZoomEngine } from './zoomEngine';
 import { FocusRegion, focusToCrop } from './focusRegion';
 import { LayoutAgent } from './layoutAgent';
 import { FrameSource } from './frameSource';
+import { CameraBackgroundProcessor } from './cameraBackground';
 import { CameraState, LayoutMode, SmartFeatures, TemplateConfig, WebcamConfig } from './types';
 
 export interface CompositorOptions {
@@ -35,6 +36,8 @@ export class ReelCompositor {
   private cursor = { x: 960, y: 540 };
   private lastClick: { x: number; y: number } | null = null;
   private sourceSize = { width: 1920, height: 1080 };
+  /** Created the first time a camera background is picked; the model then stays loaded */
+  private cameraBackground: CameraBackgroundProcessor | null = null;
 
   constructor(opts: CompositorOptions) {
     this.opts = opts;
@@ -141,7 +144,14 @@ export class ReelCompositor {
       return null;
     }
 
-    const webcamImage = webcam?.image ?? null;
+    let cam = webcam;
+    const background = webcamConfig?.enabled ? webcamConfig.background ?? 'none' : 'none';
+    if (cam && (background !== 'none' || this.cameraBackground)) {
+      this.cameraBackground ??= new CameraBackgroundProcessor();
+      this.cameraBackground.setBackground(background);
+      cam = this.cameraBackground.process(cam, now);
+    }
+    const webcamImage = cam?.image ?? null;
     LayoutAgent.renderFrame(layoutMode, {
       mode: layoutMode,
       ctx,
@@ -158,8 +168,8 @@ export class ReelCompositor {
       brandTitle: this.opts.brandTitle,
       creatorHandle: this.opts.creatorHandle,
       webcamSource: webcamImage,
-      webcamWidth: webcam?.width,
-      webcamHeight: webcam?.height,
+      webcamWidth: cam?.width,
+      webcamHeight: cam?.height,
       webcamConfig,
       cameraOnly
     });

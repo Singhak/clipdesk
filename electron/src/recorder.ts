@@ -238,6 +238,7 @@ async function main(): Promise<void> {
       warnings.push('The microphone is blocked or unavailable, so there is no voice-over.');
     }
   }
+  webcamConfig.background = config.cameraBackground ?? 'none';
   if (config.camera) webcamConfig.enabled = await startCamera();
 
   // Mic first: if the two can't be mixed, keep the voice-over.

@@ -1,3 +1,5 @@
+import type { CameraBackgroundId } from './cameraBackground';
+
 export type TemplateId = 'coding' | 'product_demo' | 'presentation' | 'browser' | 'custom';
 
 export type RecordingSource = 'screen' | 'window' | 'region';
@@ -105,6 +107,8 @@ export interface WebcamConfig {
   mirror?: boolean;
   shape?: 'circle' | 'square'; // default circle
   scale?: number; // multiplier on the preset size, 0.6 to 1.6, default 1
+  /** What shows behind the person in the bubble (on-device segmentation); default none */
+  background?: CameraBackgroundId;
 }
 
 

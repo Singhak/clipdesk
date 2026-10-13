@@ -1,5 +1,6 @@
 import React from 'react';
 import { WebcamConfig } from '../core/types';
+import { CAMERA_BACKGROUNDS, type CameraBackgroundId } from '../core/cameraBackground';
 
 interface Props {
   config: WebcamConfig;
@@ -7,7 +8,7 @@ interface Props {
   idPrefix: string;
 }
 
-/** Shape (circle / square) and free-size slider for the camera bubble. */
+/** Shape (circle / square), free-size slider and background for the camera bubble. */
 export const BubbleStyleControls: React.FC<Props> = ({ config, onUpdate, idPrefix }) => {
   const shape = config.shape ?? 'circle';
   const scale = config.scale ?? 1;
@@ -46,6 +47,22 @@ export const BubbleStyleControls: React.FC<Props> = ({ config, onUpdate, idPrefi
           aria-label="Camera bubble size"
         />
         <span className="text-[11px] font-mono text-slate-300 w-9 text-right">{Math.round(scale * 100)}%</span>
+      </label>
+      <label className="flex items-center justify-between gap-3">
+        <span className="text-slate-400 text-[11px] shrink-0">Background:</span>
+        <select
+          id={`${idPrefix}-background`}
+          value={config.background ?? 'none'}
+          onChange={(e) => onUpdate((prev) => ({ ...prev, background: e.target.value as CameraBackgroundId }))}
+          className="flex-1 bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-[11px] text-slate-200 cursor-pointer"
+          title="Blurs or replaces what is behind you. Runs on this device."
+        >
+          {(Object.keys(CAMERA_BACKGROUNDS) as CameraBackgroundId[]).map((id) => (
+            <option key={id} value={id} className="bg-slate-900">
+              {CAMERA_BACKGROUNDS[id].label}
+            </option>
+          ))}
+        </select>
       </label>
     </div>
   );

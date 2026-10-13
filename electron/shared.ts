@@ -1,3 +1,4 @@
+import type { CameraBackgroundId } from '../src/core/cameraBackground';
 import type { TemplateId, NoiseSuppressionMode } from '../src/core/types';
 import type { TimeRange } from '../src/core/cutList';
 
@@ -23,6 +24,8 @@ export interface DesktopConfig {
   wideZoom?: boolean;
   /** 16:9 only: cursor highlight and click ripples */
   wideMouseFx?: boolean;
+  /** Blur or replace what is behind the person in the camera bubble */
+  cameraBackground?: CameraBackgroundId;
 }
 
 export const DEFAULT_DESKTOP_CONFIG: DesktopConfig = {

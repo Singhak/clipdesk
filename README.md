@@ -80,7 +80,7 @@ Traditionally, converting widescreen desktop screen recordings into high-convert
   <tr>
     <td width="50%">
       <h3>🎥 Draggable Camera Bubble</h3>
-      <p>Circular webcam PIP with glowing animated borders, quick size toggles (Small: 180px, Medium: 220px, Large: 280px), one-click horizontal mirror flipping, and fluid drag-and-drop boundary clamping.</p>
+      <p>Circular webcam PIP with glowing animated borders, quick size toggles (Small: 180px, Medium: 220px, Large: 280px), one-click horizontal mirror flipping, and fluid drag-and-drop boundary clamping. <b>Background blur or replacement</b> (Studio dark, Indigo, Sunset, Clean white) runs on-device with MediaPipe's selfie segmenter, bundled with the app.</p>
     </td>
     <td width="50%">
       <h3>📐 Intelligent Reel Layouts</h3>
@@ -175,7 +175,7 @@ flowchart TD
   1. **Background Layer:** Ambient blur, gradient background, or solid fill.
   2. **Screen Capture Layer:** Dynamic 9:16 crop with smooth cursor focus.
   3. **Pen Annotation Layer:** Real-time fading telestrator strokes.
-  4. **Camera Bubble Layer:** Clipped circular webcam video with glowing border stroke.
+  4. **Camera Bubble Layer:** Clipped circular webcam video with glowing border stroke. With a camera background picked, `CameraBackgroundProcessor` (`src/core/cameraBackground.ts`) first cuts the person out of the camera frame (segmenting at 15 fps on the GPU) and draws them over the blur or color.
   5. **Branding Layer:** Creator handle and optional Pro watermark badge.
 
 ### 5. `ExportEngine` & `Mp4Converter` (`src/core/exportEngine.ts`, `src/core/mp4Converter.ts`)

@@ -2,6 +2,7 @@ import './app.css';
 import React, { useCallback, useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import type { TemplateId } from '../../src/core/types';
+import { CAMERA_BACKGROUNDS, type CameraBackgroundId } from '../../src/core/cameraBackground';
 import { LicensePanel } from '../../src/components/LicensePanel';
 import { openCheckout } from './license';
 import {
@@ -300,6 +301,23 @@ const Launcher: React.FC = () => {
 
       <section className="divide-y divide-white/5">
         <Toggle label="Camera bubble" checked={config.camera} onChange={(camera) => update({ camera })} />
+        {config.camera && (
+          <label className="flex items-center justify-between gap-3 py-2.5">
+            <span className="text-[12px] text-slate-300">Camera background</span>
+            <select
+              value={config.cameraBackground ?? 'none'}
+              onChange={(e) => update({ cameraBackground: e.target.value as CameraBackgroundId })}
+              className="px-2 py-1 rounded-lg bg-white/5 border border-white/10 text-[12px]"
+              title="Blurs or replaces what is behind you. Runs on this device."
+            >
+              {(Object.keys(CAMERA_BACKGROUNDS) as CameraBackgroundId[]).map((id) => (
+                <option key={id} value={id} className="bg-slate-900">
+                  {CAMERA_BACKGROUNDS[id].label}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <div>
           <Toggle label="Microphone" checked={config.mic} onChange={(mic) => update({ mic })} />
           {config.mic && (
