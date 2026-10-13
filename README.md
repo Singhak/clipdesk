@@ -279,7 +279,9 @@ WtoR/
 │   │   ├── mp4Converter.ts            # In-browser WebM to H.264/AAC converter and cutter via Wasm
 │   │   └── __tests__/                 # Vitest unit tests for the core engines
 │   └── licensing/             # 👑 Monetization & Entitlements
-│       ├── licenseService.ts          # Offline key validation & localStorage cache
+│       ├── licenseService.ts          # Key activation, trial, refresh against server/
+│       ├── licenseToken.ts            # Offline Ed25519 token verification
+│       ├── publicKey.ts               # Licensing server URL + public key (VITE_LICENSE_*)
 │       └── tierFeatures.ts            # Free vs. Pro entitlement matrices
 │
 ├── extension/                 # 🧩 Chrome Extension (Manifest V3)
@@ -454,7 +456,9 @@ The cut editor (web export screen and desktop result window) has its own keys. T
 
 ## 🌐 Deployment to Hostinger
 
-ClipDesk is completely client-side and requires **no database, node backend, or server infrastructure**. You can host it on any static web server, Hostinger shared hosting, Cloudflare Pages, Vercel, or Netlify.
+The studio itself is completely client-side and needs **no database or Node backend**. You can host it on any static web server, Hostinger shared hosting, Cloudflare Pages, Vercel or Netlify.
+
+Selling Pro needs one more piece: the small PHP licensing server in [`server/`](server/). It runs Cashfree checkout, issues license keys and signs device tokens. Deploy it to `public_html/api/` and follow [server/README.md](server/README.md). Then build with `VITE_LICENSE_PUBLIC_KEY` and `VITE_LICENSE_API` set. Without them, every build stays on the Free tier.
 
 ### 1. Build the Production Bundle
 ```bash
@@ -503,4 +507,8 @@ In the Web Studio and Chrome Extension, recordings are browser Blobs, which Chro
 
 ## 📄 License & Attribution
 
-Distributed under the MIT License. Built with ❤️ for developers, founders, and content creators.
+ClipDesk is free software under the [GNU General Public License v3.0 or later](LICENSE). You may use, study, change and share it, and anything you distribute that is based on it must stay under the GPL.
+
+The official builds are free to use. A paid Pro license removes the watermark and the 90-second limit, and unlocks 16 Mbps export and the Pro templates. The license funds development; the source stays open. Third-party components and their licenses are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The desktop app bundles a GPL build of FFmpeg.
+
+Built with ❤️ for developers, founders, and content creators.

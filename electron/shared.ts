@@ -85,6 +85,8 @@ export interface SaveRequest {
   layout: DesktopLayout;
   warnings: string[];
   noiseCancellation?: NoiseSuppressionMode;
+  /** FFmpeg -b:v for the MP4 pass, from the license tier */
+  bitrate?: string;
 }
 
 export interface SavedRecording {

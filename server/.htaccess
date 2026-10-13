@@ -1,0 +1,18 @@
+Options -Indexes
+
+# The web app's .htaccess sets COEP/COOP for ffmpeg.wasm. They would block the Cashfree SDK on the
+# checkout page, so they are switched off for this folder.
+<IfModule mod_headers.c>
+  Header always unset Cross-Origin-Embedder-Policy
+  Header always unset Cross-Origin-Opener-Policy
+  Header unset Cross-Origin-Embedder-Policy
+  Header unset Cross-Origin-Opener-Policy
+</IfModule>
+
+# Only the endpoint scripts are public
+<FilesMatch "^(config(\.example)?\.php|schema\.sql|README\.md)$">
+  Require all denied
+</FilesMatch>
+
+RewriteEngine On
+RewriteRule ^(lib|bin)(/|$) - [F,L]

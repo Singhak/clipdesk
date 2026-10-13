@@ -27,6 +27,7 @@ import { BubbleStyleControls } from './BubbleStyleControls';
 import { AudioMeter } from './AudioMeter';
 import { TemplateConfig, LayoutMode, SmartFeatures, LicenseInfo, ExportSettings, WebcamConfig } from '../core/types';
 import { ExportEngine } from '../core/exportEngine';
+import { getTierConfig } from '../licensing/tierFeatures';
 import { CaptionEngine, CaptionSegment } from '../core/captionEngine';
 
 interface LiveStudioProps {
@@ -106,6 +107,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   const [webcamVideoEl, setWebcamVideoEl] = useState<HTMLVideoElement | null>(null);
   const isWide = layoutMode === 'widescreen';
   const isPro = license.tier === 'pro';
+  const { maxDurationSeconds } = getTierConfig(isPro);
   const [penActive, setPenActive] = useState(false);
   const [clearSignal, setClearSignal] = useState(0);
   const [popoutWin, setPopoutWin] = useState<Window | null>(null);
@@ -254,8 +256,8 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
     elapsedRef.current = secs;
     setElapsedSeconds(secs);
 
-    // Enforce Free tier 90s duration cap to prevent unbounded resource leak and provide commercial upgrade trigger
-    if (!isPro && secs >= 90) {
+    // Free tier length cap: the take is exported, not lost, when it is reached
+    if (secs >= maxDurationSeconds) {
       void stopAndExportRef.current();
     }
   };
@@ -452,12 +454,12 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           {!isPro && (
             <div
               className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold ${
-                elapsedSeconds >= 75
+                elapsedSeconds >= maxDurationSeconds - 15
                   ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse'
                   : 'bg-white/5 text-slate-300 border border-white/10'
               }`}
             >
-              <span>Free Plan: {Math.max(0, 90 - elapsedSeconds)}s left</span>
+              <span>Free Plan: {Math.max(0, maxDurationSeconds - elapsedSeconds)}s left</span>
             </div>
           )}
 

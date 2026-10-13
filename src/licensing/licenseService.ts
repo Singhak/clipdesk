@@ -1,194 +1,173 @@
 import { LicenseInfo } from '../core/types';
+import { LicensePayload, verifyToken } from './licenseToken';
+import { LICENSE_API_BASE, LICENSE_PUBLIC_KEY, isLicensingConfigured } from './publicKey';
 
-const STORAGE_KEY = 'clipdesk_license_v1';
-const DEFAULT_CHECKOUT_URL = 'https://buy.stripe.com/test_clipdesk_pro_creator';
+// Pro is unlocked only by an Ed25519-signed token from the licensing server (server/). The token is
+// verified offline on every read, so editing localStorage cannot grant Pro, and it is bound to this
+// device's random ID, so copying it to another machine does not either.
 
-// Demo codes strictly designated for local evaluation
-const OFFICIAL_DEMO_KEYS = ['DEMO-CREATOR-2026', 'TRIAL-PRO-7DAYS', 'OBS-PRO-2026'];
+const STORAGE_KEY = 'clipdesk_license_v2';
+const LEGACY_STORAGE_KEY = 'clipdesk_license_v1';
+const DEVICE_KEY = 'clipdesk_device_id';
+const KEY_PATTERN = /^CLIP-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/;
 
-// Production keys granted by payment webhook
-const PERPETUAL_VIP_KEYS = ['CREATOR-PASS-2026', 'REEL-SUPERSTAR-99'];
+export type LicenseEndpoint = 'activate.php' | 'deactivate.php' | 'trial.php';
+export type LicenseTransport = (endpoint: LicenseEndpoint, body: Record<string, unknown>) => Promise<{ status: number; data: any }>;
+export interface LicenseResult {
+  success: boolean;
+  message: string;
+}
+
+interface Stored {
+  token?: string;
+  key?: string;
+}
+
+const FREE: LicenseInfo = { tier: 'free', planName: 'Free Creator Plan' };
+
+const PLAN_NAMES: Record<LicensePayload['plan'], string> = {
+  monthly: 'Pro Creator · 30-day pass',
+  lifetime: 'Pro Creator · Lifetime',
+  trial: 'Pro Creator · 7-day trial'
+};
+
+const fetchTransport: LicenseTransport = async (endpoint, body) => {
+  const res = await fetch(`${LICENSE_API_BASE}/${endpoint}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  return { status: res.status, data: await res.json().catch(() => ({})) };
+};
+
+function readStored(): Stored {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as Stored) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeStored(stored: Stored): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
+  } catch {
+    // Storage blocked: the license simply won't persist
+  }
+}
 
 export class LicenseService {
   private static listeners: Array<(info: LicenseInfo) => void> = [];
+  private static publicKey = LICENSE_PUBLIC_KEY;
+  private static transport: LicenseTransport = fetchTransport;
+  private static configured = isLicensingConfigured();
+
+  /**
+   * Lets Electron route requests through the main process, and tests inject a key and a fake server
+   * (`serverReady` skips the check that this build has a real server URL).
+   */
+  public static configure(opts: { publicKey?: string; transport?: LicenseTransport; serverReady?: boolean }): void {
+    if (opts.publicKey !== undefined) this.publicKey = opts.publicKey;
+    if (opts.transport) this.transport = opts.transport;
+    this.configured = this.publicKey.length > 0 && (opts.serverReady ?? isLicensingConfigured());
+  }
+
+  public static getDeviceId(): string {
+    try {
+      let id = localStorage.getItem(DEVICE_KEY);
+      if (!id || !/^[A-Za-z0-9-]{8,64}$/.test(id)) {
+        id = crypto.randomUUID();
+        localStorage.setItem(DEVICE_KEY, id);
+      }
+      return id;
+    } catch {
+      return 'no-storage-device';
+    }
+  }
 
   public static getLicense(): LicenseInfo {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored) as LicenseInfo;
-        // Verify expiry if present
-        if (parsed.expiresAt && new Date(parsed.expiresAt).getTime() < Date.now()) {
-          this.resetToFree();
-          return {
-            tier: 'free',
-            planName: 'Free Creator Plan (Expired)'
-          };
-        }
-        return parsed;
-      }
-    } catch {
-      // ignore
+    const stored = readStored();
+    const payload = verifyToken(stored.token, this.publicKey, this.getDeviceId());
+    if (!payload) {
+      return stored.key ? { ...FREE, licenseKey: stored.key, planName: 'Free Creator Plan (key needs re-activation)' } : FREE;
     }
     return {
-      tier: 'free',
-      planName: 'Free Creator Plan'
+      tier: 'pro',
+      plan: payload.plan,
+      licenseKey: payload.key ?? undefined,
+      expiresAt: payload.exp === null ? undefined : new Date(payload.exp * 1000).toISOString(),
+      planName: PLAN_NAMES[payload.plan] ?? 'Pro Creator'
     };
   }
 
-  /**
-   * Validates a license key algorithmically with checksum and official registry.
-   * Completely eliminates trivial prefix matching ('PRO-ANYTHING') spoofing.
-   */
-  public static activateKey(key: string): { success: boolean; message: string; license?: LicenseInfo } {
+  public static async activateKey(key: string): Promise<LicenseResult> {
     const cleanKey = key.trim().toUpperCase();
-
-    if (!cleanKey) {
-      return { success: false, message: 'Please enter a license key.' };
+    if (!cleanKey) return { success: false, message: 'Please enter a license key.' };
+    if (!KEY_PATTERN.test(cleanKey)) {
+      return { success: false, message: 'License keys look like CLIP-XXXX-XXXX-XXXX. Check for typos.' };
     }
-
-    // Check for demo evaluation keys
-    if (OFFICIAL_DEMO_KEYS.includes(cleanKey)) {
-      const license: LicenseInfo = {
-        tier: 'pro',
-        licenseKey: cleanKey,
-        isDemo: true,
-        activatedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        planName: 'Pro Creator 7-Day Trial Pass'
-      };
-      license.syncToken = this.createSyncToken(license);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(license));
-      LicenseService.notify(license);
-      return {
-        success: true,
-        message: '✨ 7-Day Pro Creator Evaluation Trial activated! Watermark removed.',
-        license
-      };
+    const res = await this.call('activate.php', { key: cleanKey, deviceId: this.getDeviceId() });
+    if (!res.success || !res.token) return res;
+    if (!verifyToken(res.token, this.publicKey, this.getDeviceId())) {
+      return { success: false, message: 'The licensing server sent a token this build cannot verify. Update ClipDesk.' };
     }
+    writeStored({ token: res.token, key: cleanKey });
+    this.notify(this.getLicense());
+    return { success: true, message: '🎉 Pro activated. The watermark and recording limit are gone.' };
+  }
 
-    // Check for VIP / Perpetual keys
-    if (PERPETUAL_VIP_KEYS.includes(cleanKey)) {
-      const license: LicenseInfo = {
-        tier: 'pro',
-        licenseKey: cleanKey,
-        isDemo: false,
-        activatedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-        planName: 'Pro Creator Annual Pass'
-      };
-      license.syncToken = this.createSyncToken(license);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(license));
-      LicenseService.notify(license);
-      return {
-        success: true,
-        message: '🎉 Pro Creator Annual Pass activated! Watermark permanently removed.',
-        license
-      };
+  public static async startTrial(): Promise<LicenseResult> {
+    const res = await this.call('trial.php', { deviceId: this.getDeviceId() });
+    if (!res.success || !res.token) return res;
+    if (!verifyToken(res.token, this.publicKey, this.getDeviceId())) {
+      return { success: false, message: 'The licensing server sent a token this build cannot verify. Update ClipDesk.' };
     }
+    writeStored({ token: res.token });
+    this.notify(this.getLicense());
+    return { success: true, message: '✨ 7-day Pro trial started on this device.' };
+  }
 
-    // Check for cryptographically validated Stripe/LemonSqueezy production keys (Format: CLIP-XXXX-XXXX-XXXX)
-    if (this.verifyProductionKeyChecksum(cleanKey)) {
-      const license: LicenseInfo = {
-        tier: 'pro',
-        licenseKey: cleanKey,
-        isDemo: false,
-        activatedAt: new Date().toISOString(),
-        expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-        planName: 'Pro Creator Subscriber'
-      };
-      license.syncToken = this.createSyncToken(license);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(license));
-      LicenseService.notify(license);
-      return {
-        success: true,
-        message: '🎉 Pro Creator license verified and activated successfully!',
-        license
-      };
+  /** Frees this device's slot on the server, then drops back to Free locally. */
+  public static async deactivate(): Promise<LicenseResult> {
+    const { key } = readStored();
+    if (key) {
+      const res = await this.call('deactivate.php', { key, deviceId: this.getDeviceId() });
+      if (!res.success) return res;
     }
-
-    return {
-      success: false,
-      message: 'Invalid license key. Ensure you have subscribed via Stripe or use demo key: DEMO-CREATOR-2026'
-    };
+    this.resetToFree();
+    return { success: true, message: 'This device is deactivated. You can use the key on another device now.' };
   }
 
   /**
-   * Verifies mathematical checksum for authentic Stripe purchase license tokens
+   * Re-activates the stored key so renewals, expiry and revocations reach this device.
+   * Network failures keep the current token: the app keeps working offline.
    */
-  private static verifyProductionKeyChecksum(key: string): boolean {
-    const parts = key.split('-');
-    if (parts.length !== 4 || parts[0] !== 'CLIP') return false;
-
-    // Checksum calculation: sum of char codes modulo 26 matches last segment hash
-    const payload = parts[1] + parts[2];
-    if (payload.length !== 8) return false;
-
-    let sum = 0;
-    for (let i = 0; i < payload.length; i++) {
-      sum = (sum * 31 + payload.charCodeAt(i)) % 10000;
-    }
-    const expectedSuffix = sum.toString(16).toUpperCase().padStart(4, '0');
-    return parts[3] === expectedSuffix;
-  }
-
-  /**
-   * Generates a portable base64 sync token for pairing Web, Chrome Extension, and Electron desktop
-   */
-  public static createSyncToken(license: LicenseInfo): string {
-    const payload = {
-      tier: license.tier,
-      key: license.licenseKey,
-      exp: license.expiresAt,
-      demo: license.isDemo,
-      sig: btoa(`CLIP_VERIFIED_${license.licenseKey}_${license.expiresAt}`)
-    };
-    return `CLIPSYNC_${btoa(JSON.stringify(payload))}`;
-  }
-
-  /**
-   * Imports and pairs a sync token from Web into Extension or Desktop
-   */
-  public static importSyncToken(token: string): { success: boolean; message: string } {
-    try {
-      const trimmed = token.trim();
-      if (!trimmed.startsWith('CLIPSYNC_')) {
-        return { success: false, message: 'Invalid sync token format. Expected CLIPSYNC_...' };
-      }
-      const json = atob(trimmed.replace('CLIPSYNC_', ''));
-      const parsed = JSON.parse(json);
-
-      if (parsed.tier === 'pro') {
-        const license: LicenseInfo = {
-          tier: 'pro',
-          licenseKey: parsed.key,
-          isDemo: !!parsed.demo,
-          expiresAt: parsed.exp,
-          activatedAt: new Date().toISOString(),
-          planName: parsed.demo ? 'Pro Creator 7-Day Trial Pass' : 'Pro Creator Synced Pass'
-        };
-        license.syncToken = trimmed;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(license));
-        this.notify(license);
-        return { success: true, message: '🎉 Cross-platform license synced successfully!' };
-      }
-      return { success: false, message: 'Sync token did not contain an active Pro license.' };
-    } catch (e) {
-      return { success: false, message: 'Failed to decrypt sync token.' };
+  public static async refresh(): Promise<void> {
+    const { key } = readStored();
+    if (!key || !this.configured) return;
+    const res = await this.call('activate.php', { key, deviceId: this.getDeviceId() });
+    if (res.success && res.token && verifyToken(res.token, this.publicKey, this.getDeviceId())) {
+      writeStored({ token: res.token, key });
+      this.notify(this.getLicense());
+    } else if (res.status === 403 || res.status === 404) {
+      // Expired or revoked: keep the key so a renewal can be picked up later
+      writeStored({ key });
+      this.notify(this.getLicense());
     }
   }
 
-  public static getCheckoutUrl(): string {
-    return (typeof window !== 'undefined' && (window as any).__CLIPDESK_CHECKOUT_URL) || DEFAULT_CHECKOUT_URL;
+  public static getCheckoutUrl(plan: 'monthly' | 'lifetime' = 'lifetime'): string {
+    const params = new URLSearchParams({ plan });
+    const { key } = readStored();
+    if (plan === 'monthly' && key) params.set('renew', key);
+    return `${LICENSE_API_BASE}/buy.php?${params}`;
   }
 
   public static resetToFree(): void {
-    const license: LicenseInfo = {
-      tier: 'free',
-      planName: 'Free Creator Plan'
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(license));
-    LicenseService.notify(license);
+    writeStored({});
+    this.notify(FREE);
   }
 
   public static subscribe(listener: (info: LicenseInfo) => void): () => void {
@@ -200,5 +179,21 @@ export class LicenseService {
 
   private static notify(info: LicenseInfo): void {
     LicenseService.listeners.forEach((l) => l(info));
+  }
+
+  private static async call(
+    endpoint: LicenseEndpoint,
+    body: Record<string, unknown>
+  ): Promise<LicenseResult & { token?: string; status?: number }> {
+    if (!this.configured) {
+      return { success: false, message: 'This build has no licensing server configured (see server/README.md).' };
+    }
+    try {
+      const { status, data } = await this.transport(endpoint, body);
+      if (status >= 200 && status < 300) return { success: true, message: '', token: data?.token, status };
+      return { success: false, message: data?.message || `The licensing server returned an error (${status}).`, status };
+    } catch {
+      return { success: false, message: "Couldn't reach the licensing server. Check your internet connection and try again." };
+    }
   }
 }

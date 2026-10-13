@@ -33,6 +33,13 @@ const api = {
   start: (config: DesktopConfig): Promise<void> => ipcRenderer.invoke('recording:start', config),
   resetError: () => ipcRenderer.send('state:reset-error'),
 
+  // Licensing: requests go through the main process, as page CSP blocks outside connections
+  license: {
+    request: (endpoint: string, body: Record<string, unknown>): Promise<{ status: number; data: any }> =>
+      ipcRenderer.invoke('license:request', { endpoint, body }),
+    openCheckout: (url: string) => ipcRenderer.send('license:open', url)
+  },
+
   // Floating bar
   setControlsCollapsed: (collapsed: boolean) => ipcRenderer.send('controls:collapsed', collapsed),
   setControlsSize: (size: { width: number; height: number }) => ipcRenderer.send('controls:size', size),

@@ -98,6 +98,8 @@ export const App: React.FC = () => {
     const unsubscribe = LicenseService.subscribe((newLicense) => {
       setLicense(newLicense);
     });
+    // Picks up renewals and revocations; offline keeps the current license
+    void LicenseService.refresh();
     return unsubscribe;
   }, []);
 

@@ -178,41 +178,51 @@ if (typeof globalThis.localStorage === 'undefined') {
   };
 }
 
-// Prefix spoofing must FAIL
-const spoofRes = LicenseService.activateKey('PRO-HACKER-FREE-PASS');
-assert.equal(spoofRes.success, false, 'Arbitrary keys starting with PRO- must NOT activate Pro tier');
+// A fake licensing server that signs tokens like server/lib/token.php
+const nacl = (await import('tweetnacl')).default;
+const pair = nacl.sign.keyPair();
+const b64url = (b: Uint8Array) => Buffer.from(b).toString('base64url');
+const sign = (payload: object) => {
+  const body = b64url(new TextEncoder().encode(JSON.stringify(payload)));
+  return `${body}.${b64url(nacl.sign.detached(new TextEncoder().encode(body), pair.secretKey))}`;
+};
+const VALID_KEY = 'CLIP-AB12-CD34-EF56';
+LicenseService.configure({
+  publicKey: Buffer.from(pair.publicKey).toString('base64'),
+  serverReady: true,
+  transport: async (_endpoint, body) =>
+    body.key === VALID_KEY
+      ? { status: 200, data: { token: sign({ v: 1, tier: 'pro', plan: 'lifetime', key: VALID_KEY, deviceId: body.deviceId, iat: 0, exp: null }) } }
+      : { status: 404, data: { message: 'License key not found.' } }
+});
 
-// Legitimate VIP / pass keys must SUCCEED
-const vipRes = LicenseService.activateKey('CREATOR-PASS-2026');
-assert.equal(vipRes.success, true, 'Official VIP key must activate Pro tier');
+// Malformed and unknown keys must FAIL, including the old hardcoded ones
+assert.equal((await LicenseService.activateKey('PRO-HACKER-FREE-PASS')).success, false, 'Arbitrary keys must NOT activate Pro');
+assert.equal((await LicenseService.activateKey('CREATOR-PASS-2026')).success, false, 'Old hardcoded keys must NOT activate Pro');
+assert.equal((await LicenseService.activateKey('CLIP-ZZZZ-ZZZZ-ZZZZ')).success, false, 'Unknown keys must NOT activate Pro');
+assert.equal(LicenseService.getLicense().tier, 'free');
+
+// A server-issued key activates Pro
+assert.equal((await LicenseService.activateKey(VALID_KEY)).success, true, 'Server-issued key must activate Pro');
 assert.equal(LicenseService.getLicense().tier, 'pro');
-
-// Demo trial key must activate clearly labeled trial pass
-const demoRes = LicenseService.activateKey('DEMO-CREATOR-2026');
-assert.equal(demoRes.success, true, 'Demo evaluation key must activate trial');
-assert.equal(LicenseService.getLicense().isDemo, true);
 
 LicenseService.resetToFree();
 assert.equal(LicenseService.getLicense().tier, 'free');
 console.log('  ✅ Flaw 3.2: Arbitrary client-side key bypass neutralized.\n');
 
 // =========================================================================
-// Test 8: Cross-Platform License Sync Token (Audit Flaw 3.3)
+// Test 8: Forged license tokens (Audit Flaw 3.3)
 // =========================================================================
-console.log('▶ Test 8: Cross-Platform License Sync Token (Audit Flaw 3.3)');
-LicenseService.activateKey('CREATOR-PASS-2026');
-const activeLicense = LicenseService.getLicense();
-const syncToken = LicenseService.createSyncToken(activeLicense);
-assert(syncToken.startsWith('CLIPSYNC_'), 'Sync token must be properly prefixed');
+console.log('▶ Test 8: Forged & copied license tokens (Audit Flaw 3.3)');
+const forgedPayload = b64url(new TextEncoder().encode(JSON.stringify({ v: 1, tier: 'pro', plan: 'lifetime', key: VALID_KEY, deviceId: LicenseService.getDeviceId(), iat: 0, exp: null })));
+localStorage.setItem('clipdesk_license_v2', JSON.stringify({ token: `${forgedPayload}.${b64url(new Uint8Array(64))}` }));
+assert.equal(LicenseService.getLicense().tier, 'free', 'A hand-written token must not unlock Pro');
 
-// Simulate clean receiver on Desktop / Extension
+const otherDevice = sign({ v: 1, tier: 'pro', plan: 'lifetime', key: VALID_KEY, deviceId: 'some-other-device', iat: 0, exp: null });
+localStorage.setItem('clipdesk_license_v2', JSON.stringify({ token: otherDevice }));
+assert.equal(LicenseService.getLicense().tier, 'free', 'A token copied from another device must not unlock Pro');
 LicenseService.resetToFree();
-assert.equal(LicenseService.getLicense().tier, 'free');
-
-const importRes = LicenseService.importSyncToken(syncToken);
-assert.equal(importRes.success, true, 'Importing valid sync token must succeed');
-assert.equal(LicenseService.getLicense().tier, 'pro');
-console.log('  ✅ Flaw 3.3: Cross-platform license pairing & sync verified.\n');
+console.log('  ✅ Flaw 3.3: Tokens are signed and bound to the device.\n');
 
 // =========================================================================
 // Test 9: Dynamic Animated Captions Generator (Audit Flaw 2.2)

@@ -7,6 +7,7 @@ import {
   ipcMain,
   Menu,
   nativeImage,
+  net,
   screen,
   session,
   shell,
@@ -34,6 +35,9 @@ import { FFmpegManager } from './ffmpegManager';
 import { parseRanges, type TimeRange } from '../src/core/cutList';
 import { initDiagnostics, log, openDiagnosticsFolder } from './diagnostics';
 import { checkNow, initUpdater, installNow, updateStatus } from './updater';
+import { LICENSE_API_BASE } from '../src/licensing/publicKey';
+
+const LICENSE_ENDPOINTS = ['activate.php', 'deactivate.php', 'trial.php'];
 
 /** Console output is lost in the installed app, so problems also go to the diagnostics log */
 function report(level: 'warn' | 'error', message: string, e: unknown): void {
@@ -587,11 +591,12 @@ async function saveRecording(req: SaveRequest): Promise<SavedRecording> {
   let finalFile = rawFile;
   let finalSize = finalSizeRaw;
   const noiseCancellation = req.noiseCancellation ?? config.noiseCancellation ?? 'studio';
+  const bitrate = req.bitrate === '6M' || req.bitrate === '16M' ? req.bitrate : undefined;
 
   if (extension !== 'mp4') {
     const mp4File = path.join(await recordingsDir(), `${baseName}.mp4`);
     try {
-      await FFmpegManager.convertToMp4(rawFile, mp4File, { noiseCancellation });
+      await FFmpegManager.convertToMp4(rawFile, mp4File, { noiseCancellation, bitrate });
       // Clean up the temporary raw file on successful conversion
       await fs.unlink(rawFile).catch(() => {});
       finalFile = mp4File;
@@ -605,7 +610,7 @@ async function saveRecording(req: SaveRequest): Promise<SavedRecording> {
     // If MediaRecorder recorded direct MP4, post-process with FFmpeg for studio noise cancellation & faststart
     const optimizedFile = path.join(await recordingsDir(), `${baseName}.optimized.mp4`);
     try {
-      await FFmpegManager.convertToMp4(rawFile, optimizedFile, { noiseCancellation });
+      await FFmpegManager.convertToMp4(rawFile, optimizedFile, { noiseCancellation, bitrate });
       await fs.unlink(rawFile).catch(() => {});
       await fs.rename(optimizedFile, rawFile);
       const stat = await fs.stat(rawFile);
@@ -641,6 +646,19 @@ function parseKeep(kept: unknown, duration: unknown): { ranges: TimeRange[]; dur
 function registerIpc(): void {
   ipcMain.handle('state:get', () => state);
   ipcMain.on('state:reset-error', () => setState({ error: undefined }));
+  ipcMain.handle('license:request', async (_e, req: { endpoint: string; body: Record<string, unknown> }) => {
+    if (!LICENSE_ENDPOINTS.includes(req?.endpoint)) throw new Error('unknown license endpoint');
+    const res = await net.fetch(`${LICENSE_API_BASE}/${req.endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req.body ?? {})
+    });
+    return { status: res.status, data: await res.json().catch(() => ({})) };
+  });
+  ipcMain.on('license:open', (_e, url: string) => {
+    // Only the checkout page on our own licensing server opens in the browser
+    if (typeof url === 'string' && url.startsWith(`${LICENSE_API_BASE}/buy.php`)) void shell.openExternal(url);
+  });
   ipcMain.on('control', (_e, action: ControlAction) => {
     if (action === 'toggleCamera') {
       const nextCamera = !state.camera;

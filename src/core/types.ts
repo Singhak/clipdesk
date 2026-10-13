@@ -72,20 +72,20 @@ export interface SubscriptionTier {
   id: 'free' | 'pro';
   name: string;
   hasWatermark: boolean;
-  maxResolution: '1080x1920' | '4K';
+  maxResolution: '1080x1920';
   maxDurationSeconds: number; // e.g. 90 or Infinity
   proTemplatesUnlocked: boolean;
   highBitrate: boolean;
 }
 
+/** Derived from a verified license token (see src/licensing/licenseService.ts), never trusted from storage */
 export interface LicenseInfo {
   tier: 'free' | 'pro';
+  plan?: 'monthly' | 'lifetime' | 'trial';
   licenseKey?: string;
+  /** ISO date; absent for lifetime licenses */
   expiresAt?: string;
-  activatedAt?: string;
   planName: string;
-  isDemo?: boolean;
-  syncToken?: string;
 }
 
 export interface ExportSettings {

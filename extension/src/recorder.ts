@@ -5,7 +5,8 @@ import { FrameSource, TrackFrameSource } from '../../src/core/frameSource';
 import { mixAudioTracks, MixedAudio } from '../../src/core/audioMixer';
 import { ExportEngine } from '../../src/core/exportEngine';
 import { LicenseService } from '../../src/licensing/licenseService';
-import { LayoutMode, WebcamConfig, getLogicalSize, getOutputSize } from '../../src/core/types';
+import { getTierConfig } from '../../src/licensing/tierFeatures';
+import { LayoutMode, SubscriptionTier, WebcamConfig, getLogicalSize, getOutputSize } from '../../src/core/types';
 import {
   IDLE_STATE,
   Message,
@@ -45,6 +46,7 @@ let config: RecordingConfig;
 let targetTabId: number | undefined;
 let surface: 'browser' | 'monitor' | 'window' = 'browser';
 let finishing = false;
+let tier: SubscriptionTier = getTierConfig(false);
 const warnings: string[] = [];
 
 const webcamConfig: WebcamConfig = {
@@ -248,6 +250,8 @@ async function main(): Promise<void> {
 
   screenSource = new TrackFrameSource(screenStream!.getVideoTracks()[0]);
   const template = TEMPLATES[config.templateId] ?? TEMPLATES.browser;
+  const isPro = LicenseService.getLicense().tier === 'pro';
+  tier = getTierConfig(isPro);
   compositor = new ReelCompositor({
     template,
     layoutMode: config.layout as LayoutMode,
@@ -258,7 +262,7 @@ async function main(): Promise<void> {
       blurSideAreas: true,
       smoothCameraDamping: true
     },
-    watermark: LicenseService.getLicense().tier === 'free',
+    watermark: !isPro,
     webcamConfig: { ...webcamConfig }
   });
   startRendering();
@@ -280,7 +284,7 @@ async function main(): Promise<void> {
       resolution: config.layout === 'widescreen' ? '1920x1080' : '1080x1920',
       fps: FPS,
       layout: config.layout as LayoutMode,
-      includeWatermark: LicenseService.getLicense().tier === 'free',
+      includeWatermark: !isPro,
       templateId: config.templateId
     });
   } catch (e) {
@@ -289,6 +293,19 @@ async function main(): Promise<void> {
   }
   await setState({ status: 'recording', accumulatedMs: 0, runningSince: Date.now() });
   show('Recording', warnings.join(' ') || 'Keep this tab open. Use the floating bar, the toolbar button, or Alt+Shift+P / Alt+Shift+S.');
+
+  // Free tier length cap: the take is saved, not lost, when it is reached
+  if (Number.isFinite(tier.maxDurationSeconds)) {
+    const capMs = tier.maxDurationSeconds * 1000;
+    const capTimer = window.setInterval(async () => {
+      if (finishing) return window.clearInterval(capTimer);
+      if (elapsedMs(await getState()) >= capMs) {
+        window.clearInterval(capTimer);
+        warnings.push(`The Free plan stops recordings at ${tier.maxDurationSeconds} seconds. Upgrade to Pro for unlimited length.`);
+        void finish(true);
+      }
+    }, 250);
+  }
 }
 
 void main();

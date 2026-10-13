@@ -34,6 +34,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwindcss": "^4.3.3",
+    "tweetnacl": "^1.0.3",
     "uiohook-napi": "^1.5.5"
   },
   "devDependencies": {
@@ -49,6 +50,7 @@
     "vitest": "^3.2.4"
   },
   "author": "ClipDesk",
+  "license": "GPL-3.0-or-later",
   "build": {
     "appId": "ai.ruh.clipdesk",
     "productName": "ClipDesk",
@@ -68,6 +70,10 @@
     "asarUnpack": [
       "node_modules/uiohook-napi/**/*",
       "node_modules/ffmpeg-static/**/*"
+    ],
+    "extraResources": [
+      "LICENSE",
+      "THIRD_PARTY_NOTICES.md"
     ],
     "electronDist": "node_modules/electron/dist",
     "win": {

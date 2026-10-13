@@ -16,6 +16,9 @@ import {
   setState
 } from './shared';
 import type { TemplateId } from '../../src/core/types';
+import { LicensePanel } from '../../src/components/LicensePanel';
+
+const openUrl = (url: string) => void chrome.tabs.create({ url });
 
 const LAYOUTS: { id: ExtLayout; label: string; hint: string }[] = [
   { id: 'dynamic_crop', label: 'Follow cursor', hint: '9:16 crop that follows your mouse and zooms on clicks' },
@@ -278,6 +281,8 @@ const Popup: React.FC = () => {
       >
         Start recording
       </button>
+
+      <LicensePanel openUrl={openUrl} />
     </div>
   );
 };

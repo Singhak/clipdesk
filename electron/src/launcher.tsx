@@ -2,6 +2,8 @@ import './app.css';
 import React, { useCallback, useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import type { TemplateId } from '../../src/core/types';
+import { LicensePanel } from '../../src/components/LicensePanel';
+import { openCheckout } from './license';
 import {
   DEFAULT_DESKTOP_CONFIG,
   DesktopConfig,
@@ -342,6 +344,8 @@ const Launcher: React.FC = () => {
       <p className="text-[11px] text-slate-500 text-center">
         The floating controls are hidden from the video. Shortcuts work in any app: Alt+Shift+P pause, Alt+Shift+S stop.
       </p>
+
+      <LicensePanel openUrl={openCheckout} />
     </main>
   );
 };

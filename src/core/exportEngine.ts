@@ -1,6 +1,7 @@
 import { ExportSettings, LayoutMode } from './types';
 import { recoveryService } from './recordingRecoveryService';
 import { CaptionSegment, CaptionStyleConfig, CaptionCustomSettings, CaptionEngine } from './captionEngine';
+import { getExportBitrate } from '../licensing/tierFeatures';
 
 export class ExportEngine {
   /** Escapes a file path or command argument for safe execution in shell command strings */
@@ -113,7 +114,8 @@ export class ExportEngine {
 
     const recorder = new MediaRecorder(canvasStream, {
       mimeType,
-      videoBitsPerSecond: settings.includeWatermark ? 6000000 : 16000000 // Free: 6Mbps, Pro: 16Mbps
+      // The watermark flag is set exactly for the Free tier
+      videoBitsPerSecond: getExportBitrate(!settings.includeWatermark).bitsPerSecond
     });
 
     // A caller that streams chunks to disk has its own recovery; IndexedDB would be a second copy
