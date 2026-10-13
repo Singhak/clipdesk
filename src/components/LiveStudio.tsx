@@ -18,6 +18,7 @@ import {
   X
 } from 'lucide-react';
 import { VerticalCanvas } from './VerticalCanvas';
+import { Modal, ConfirmDialog } from './Modal';
 import { FloatingRecordingBar } from './FloatingRecordingBar';
 import { CountdownOverlay } from './CountdownOverlay';
 import { FramingOverlay } from './FramingOverlay';
@@ -119,6 +120,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   const [isDesktopModalOpen, setIsDesktopModalOpen] = useState(false);
   const isStoppingRef = useRef(false);
   const elapsedRef = useRef(0);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [recordError, setRecordError] = useState<string | null>(null);
 
   // Countdown state: 3-2-1 countdown before recording starts
@@ -508,7 +510,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                 key={p.id}
                 type="button"
                 onClick={() => setFocus(p.presetFocus)}
-                className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/5 transition-all text-[11px] cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/5 transition-all text-xs cursor-pointer"
               >
                 {p.label}
               </button>
@@ -527,7 +529,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                 <Maximize2 className="w-4 h-4 text-indigo-400" />
                 <h2 className="text-sm font-bold text-white">Full Screen Desktop Feed</h2>
               </div>
-              <span className="text-[10px] text-slate-400 bg-white/5 px-2 py-0.5 rounded border border-white/5 hidden sm:inline">
+              <span className="text-xs text-slate-400 bg-white/5 px-2 py-0.5 rounded border border-white/5 hidden sm:inline">
                 Hover or click preview to steer camera. For OS-wide mouse tracking across native apps, use Desktop App.
               </span>
               <div className="flex items-center gap-2">
@@ -606,7 +608,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                       <Eye className="w-3.5 h-3.5" />
                       <span>Show Raw Feed</span>
                     </button>
-                    <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20">
+                    <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20">
                       ⚡ 1080x1920 Compositor Streaming
                     </span>
                   </div>
@@ -614,7 +616,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
               )}
 
               {/* Interaction Hint Overlay */}
-              <div className="absolute top-3 right-3 bg-black/80 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/15 text-[10px] text-slate-200 flex items-center gap-1.5 opacity-85 group-hover:opacity-100 transition-opacity shadow-lg">
+              <div className="absolute top-3 right-3 bg-black/80 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/15 text-xs text-slate-200 flex items-center gap-1.5 opacity-85 group-hover:opacity-100 transition-opacity shadow-lg">
                 <MousePointer className="w-3.5 h-3.5 text-indigo-400" />
                 <span>Move mouse & click here to test camera tracking & zoom</span>
               </div>
@@ -650,22 +652,22 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
             </div>
           )}
 
-          {/* Active Preset Telemetry */}
+          {/* Current template settings */}
           <div className="studio-card p-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
             <div className="bg-black/40 p-3 rounded-xl border border-white/5">
-              <div className="text-slate-400 text-[10px]">Active Template</div>
+              <div className="text-slate-400 text-xs">Template</div>
               <div className="font-bold text-white mt-1">{template.name}</div>
             </div>
             <div className="bg-black/40 p-3 rounded-xl border border-white/5">
-              <div className="text-slate-400 text-[10px]">Camera Damping</div>
-              <div className="font-bold text-indigo-400 mt-1 font-mono">{template.smoothingFactor} (Lerp)</div>
+              <div className="text-slate-400 text-xs">Camera smoothness</div>
+              <div className="font-bold text-indigo-400 mt-1 font-mono">{template.smoothingFactor}</div>
             </div>
             <div className="bg-black/40 p-3 rounded-xl border border-white/5">
-              <div className="text-slate-400 text-[10px]">Click Zoom Trigger</div>
+              <div className="text-slate-400 text-xs">Zoom on click</div>
               <div className="font-bold text-amber-400 mt-1 font-mono">{template.clickZoomMultiplier}x</div>
             </div>
             <div className="bg-black/40 p-3 rounded-xl border border-white/5">
-              <div className="text-slate-400 text-[10px]">License Plan</div>
+              <div className="text-slate-400 text-xs">License Plan</div>
               <div className={`font-bold mt-1 ${license.tier === 'pro' ? 'text-amber-400' : 'text-slate-300'}`}>
                 {license.tier === 'pro' ? 'Pro (No Watermark)' : 'Free Creator'}
               </div>
@@ -678,7 +680,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           <div className="text-center mb-3">
             <div className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-300 bg-indigo-500/10 px-3 py-1 rounded-full border border-indigo-500/20 mb-1">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Your Differentiator</span>
+              <span>Live preview</span>
             </div>
             <h2 className="text-base font-extrabold text-white">Live Vertical Preview</h2>
             <p className="text-xs text-slate-400">Instantly see what the final reel looks like before exporting</p>
@@ -726,7 +728,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
             >
               Clear drawing
             </button>
-            <span className="text-[10px] text-slate-500 hidden sm:block">Alt+Shift: P pause · S stop · D pen</span>
+            <span className="text-xs text-slate-400 hidden sm:block">Alt+Shift: P pause · S stop · D pen</span>
           </div>
 
           {!cameraOnly && (
@@ -757,14 +759,14 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
               <div className="space-y-2 pt-2 border-t border-white/10 animate-fadeIn text-xs">
                 {/* Size Selector */}
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400 text-[11px]">Bubble Size:</span>
+                  <span className="text-slate-400 text-xs">Bubble Size:</span>
                   <div className="flex items-center gap-1 bg-black/40 p-1 rounded-lg border border-white/5">
                     {(['small', 'medium', 'large'] as const).map((sz) => (
                       <button
                         key={sz}
                         id={`btn-cam-size-${sz}`}
                         onClick={() => onUpdateWebcamConfig((prev) => ({ ...prev, size: sz }))}
-                        className={`px-2.5 py-0.5 rounded text-[11px] font-bold capitalize transition-all cursor-pointer ${
+                        className={`px-2.5 py-0.5 rounded text-xs font-bold capitalize transition-all cursor-pointer ${
                           webcamConfig.size === sz
                             ? 'bg-indigo-600 text-white shadow-sm'
                             : 'text-slate-400 hover:text-slate-200'
@@ -780,7 +782,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
 
                 {/* Corner Position Presets */}
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400 text-[11px]">Corner Position:</span>
+                  <span className="text-slate-400 text-xs">Corner Position:</span>
                   <div className="flex items-center gap-1">
                     {[
                       { id: 'bottom_right' as const, label: '↘ B-Right', pos: { x: 0.82, y: 0.85 } },
@@ -798,7 +800,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                             presetPosition: preset.id
                           }))
                         }
-                        className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
+                        className={`px-2 py-0.5 rounded text-xs font-bold border transition-all cursor-pointer ${
                           webcamConfig.presetPosition === preset.id
                             ? 'bg-indigo-600/30 border-indigo-500 text-indigo-300'
                             : 'bg-white/5 border-white/5 text-slate-400 hover:text-white'
@@ -811,7 +813,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                 </div>
 
                 {/* Mirror selfie & drag hint */}
-                <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
+                <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
                   <label className="flex items-center gap-1.5 cursor-pointer">
                     <input
                       type="checkbox"
@@ -855,7 +857,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
             </button>
           </div>
 
-          <p className="text-[11px] text-slate-400 mt-2 text-center">
+          <p className="text-xs text-slate-400 mt-2 text-center">
             💡 <strong>Floating Toolbar Active:</strong> Hovers at bottom of screen. Drag anywhere or click <EyeOff className="w-3 h-3 inline mx-0.5 text-slate-300" /> to hide.
           </p>
         </div>
@@ -890,7 +892,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
               )}
               <span className={`recording-dot ${isPaused ? 'bg-amber-400' : ''}`} />
               <span className="font-mono text-lg font-black">{formatTimer(elapsedSeconds)}</span>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-300">
+              <span className="text-xs font-bold uppercase tracking-wider text-indigo-300">
                 {isCountingDown ? 'Starting…' : isPaused ? 'Paused' : 'Recording'}
               </span>
             </div>
@@ -906,6 +908,8 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                 onClick={onToggleWebcam}
                 className="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-bold cursor-pointer"
                 title="Toggle camera"
+                aria-label="Toggle camera"
+                aria-pressed={webcamConfig.enabled}
               >
                 {webcamConfig.enabled ? <Camera className="w-4 h-4" /> : <CameraOff className="w-4 h-4" />}
               </button>
@@ -931,7 +935,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           elapsedSeconds={elapsedSeconds}
           onTogglePause={togglePause}
           onStopAndExport={stopAndExport}
-          onDiscard={onCancel}
+          onDiscard={() => setConfirmDiscard(true)}
           isSimulated={isSimulated}
           webcamConfig={webcamConfig}
           onToggleWebcam={onToggleWebcam}
@@ -939,11 +943,31 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
         />
       )}
 
+      <ConfirmDialog
+        isOpen={confirmDiscard}
+        title="Discard this recording?"
+        message="The recording in progress will be thrown away and cannot be recovered."
+        confirmLabel="Discard recording"
+        cancelLabel="Keep recording"
+        danger
+        onCancel={() => setConfirmDiscard(false)}
+        onConfirm={() => {
+          setConfirmDiscard(false);
+          onCancel();
+        }}
+      />
+
       {/* Desktop App Information Modal */}
       {isDesktopModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="relative w-full max-w-lg bg-[#0e111a] border border-white/10 rounded-2xl shadow-2xl p-6 sm:p-7 text-white">
+        <Modal
+          isOpen
+          onClose={() => setIsDesktopModalOpen(false)}
+          labelledBy="desktop-modal-title"
+          panelClassName="relative w-full max-w-lg bg-[#0e111a] border border-white/10 rounded-2xl shadow-2xl p-6 sm:p-7 text-white"
+        >
+          <>
             <button
+              aria-label="Close"
               onClick={() => setIsDesktopModalOpen(false)}
               className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-white/5 cursor-pointer"
             >
@@ -955,7 +979,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                 <Monitor className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-lg font-bold">ClipDesk Desktop App</h3>
+                <h3 id="desktop-modal-title" className="text-lg font-bold">ClipDesk Desktop App</h3>
                 <p className="text-xs text-indigo-300">Native OS Cursor Tracking for Windows</p>
               </div>
             </div>
@@ -982,7 +1006,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
 
             {/* Download Options */}
             <div className="space-y-3 pt-1">
-              <div className="text-[11px] font-bold text-slate-300 uppercase tracking-wider">
+              <div className="text-xs font-bold text-slate-300 uppercase tracking-wider">
                 Direct Downloads
               </div>
 
@@ -1001,12 +1025,12 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                       <div className="text-xs font-bold text-white group-hover:text-indigo-200">
                         Windows Installer (.exe)
                       </div>
-                      <div className="text-[10px] text-slate-400">
+                      <div className="text-xs text-slate-400">
                         Signed NSIS Setup · Windows 10/11
                       </div>
                     </div>
                   </div>
-                  <span className="text-[11px] font-bold text-indigo-400">.exe ➔</span>
+                  <span className="text-xs font-bold text-indigo-400">.exe ➔</span>
                 </a>
 
                 {/* Windows MSI Installer (.msi) */}
@@ -1023,12 +1047,12 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                       <div className="text-xs font-bold text-white group-hover:text-indigo-200">
                         Enterprise MSI (.msi)
                       </div>
-                      <div className="text-[10px] text-slate-400">
+                      <div className="text-xs text-slate-400">
                         Silent install / IT deployment
                       </div>
                     </div>
                   </div>
-                  <span className="text-[11px] font-bold text-slate-400">.msi ➔</span>
+                  <span className="text-xs font-bold text-slate-400">.msi ➔</span>
                 </a>
               </div>
 
@@ -1037,7 +1061,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-white">🧩 Chrome / Edge Extension</span>
-                    <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 font-bold">
+                    <span className="text-xs px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 font-bold">
                       Pre-Packaged
                     </span>
                   </div>
@@ -1050,7 +1074,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                     <span>Download .zip (105 KB)</span>
                   </a>
                 </div>
-                <p className="text-[10px] text-slate-400">
+                <p className="text-xs text-slate-400">
                   Quick Install: <strong>1.</strong> Download & unzip · <strong>2.</strong> Open <code className="text-amber-300 font-mono">chrome://extensions</code> · <strong>3.</strong> Enable &apos;Developer mode&apos; and click &apos;Load unpacked&apos;.
                 </p>
               </div>
@@ -1065,8 +1089,8 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
                 Close & Continue in Web Studio
               </button>
             </div>
-          </div>
-        </div>
+          </>
+        </Modal>
       )}
     </div>
   );

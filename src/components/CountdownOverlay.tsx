@@ -53,6 +53,14 @@ export const CountdownOverlay: React.FC<CountdownOverlayProps> = ({
   };
 
   useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onCancel();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onCancel]);
+
+  useEffect(() => {
     playBeep(880, 0.12); // initial beep for 3
 
     let current = startNumber;
@@ -79,16 +87,17 @@ export const CountdownOverlay: React.FC<CountdownOverlayProps> = ({
   }, [onComplete, startNumber]);
 
   return (
-    <div className="fixed inset-0 z-[99999] flex flex-col items-center justify-center bg-black/85 backdrop-blur-xl select-none animate-fadeIn">
+    <div role="alertdialog" aria-modal="true" aria-label="Recording starts soon" className="fixed inset-0 z-[99999] flex flex-col items-center justify-center bg-black/85 backdrop-blur-xl select-none animate-fadeIn">
       {/* Background radial glow */}
       <div className="absolute w-[500px] h-[500px] bg-gradient-to-tr from-indigo-600/30 via-purple-600/20 to-pink-600/20 rounded-full blur-3xl pointer-events-none" />
 
       {/* Cancel button */}
       <button
         onClick={onCancel}
+        autoFocus
         className="absolute top-6 right-6 flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold text-slate-300 hover:text-white transition-all cursor-pointer"
       >
-        <X className="w-4 h-4" />
+        <X className="w-4 h-4" aria-hidden="true" />
         <span>Cancel (Esc)</span>
       </button>
 
@@ -100,6 +109,9 @@ export const CountdownOverlay: React.FC<CountdownOverlayProps> = ({
 
           {/* Number */}
           <span
+            role="status"
+            aria-live="assertive"
+            aria-atomic="true"
             key={String(count)}
             className="text-7xl sm:text-8xl font-black bg-gradient-to-b from-white via-slate-100 to-indigo-300 bg-clip-text text-transparent drop-shadow-2xl animate-scaleBounce"
           >
@@ -134,8 +146,8 @@ export const CountdownOverlay: React.FC<CountdownOverlayProps> = ({
             <Video className="w-4 h-4 text-rose-500 animate-pulse" />
             <span>Switch to your target window now...</span>
           </div>
-          <p className="text-xs text-slate-400">
-            ClipDesk will begin 60 FPS recording with cursor tracking in a moment.
+          <p className="text-xs text-slate-300">
+            ClipDesk will start recording in a moment.
           </p>
         </div>
       </div>

@@ -110,7 +110,15 @@ export const AudioMeter: React.FC<AudioMeterProps> = ({
     return (
       <div className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-black/40 border border-white/10 ${className}`}>
         <Mic className={`w-3 h-3 ${isGateOpen && currentDb > -50 ? 'text-emerald-400' : 'text-slate-500'}`} />
-        <div className="w-16 h-2 bg-slate-800 rounded-full overflow-hidden relative border border-white/5">
+        <div
+          role="meter"
+          aria-label="Microphone level"
+          aria-valuemin={-60}
+          aria-valuemax={0}
+          aria-valuenow={Math.round(Math.max(-60, currentDb))}
+          aria-valuetext={currentDb <= -58 ? 'Silent' : `${Math.round(currentDb)} decibels`}
+          className="w-16 h-2 bg-slate-800 rounded-full overflow-hidden relative border border-white/5"
+        >
           <div
             className={`h-full transition-all duration-75 rounded-full ${
               isClipping
@@ -127,7 +135,7 @@ export const AudioMeter: React.FC<AudioMeterProps> = ({
             style={{ left: `${peakNormalized * 100}%` }}
           />
         </div>
-        <span className="text-[9px] font-mono text-slate-400 w-8 text-right">
+        <span className="text-xs font-mono text-slate-400 w-8 text-right">
           {currentDb <= -58 ? 'SILENT' : `${Math.round(currentDb)}dB`}
         </span>
       </div>
@@ -143,15 +151,15 @@ export const AudioMeter: React.FC<AudioMeterProps> = ({
           ) : (
             <MicOff className="w-3.5 h-3.5 text-slate-500" />
           )}
-          <span className="font-semibold text-slate-200">Microphone Input Level</span>
+          <span className="font-semibold text-slate-200">Microphone Level</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+          <span className={`text-xs font-bold px-1.5 py-0.5 rounded border ${
             isGateOpen
               ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
               : 'bg-slate-800 border-white/10 text-slate-400'
           }`}>
-            {isGateOpen ? 'GATE OPEN' : 'GATE HOLD'}
+            {isGateOpen ? 'MIC ACTIVE' : 'MIC QUIET'}
           </span>
           <span className="font-mono text-xs text-slate-300 w-12 text-right">
             {currentDb <= -58 ? '-inf dB' : `${currentDb.toFixed(1)} dB`}
@@ -160,7 +168,15 @@ export const AudioMeter: React.FC<AudioMeterProps> = ({
       </div>
 
       {/* Meter Bar */}
-      <div className="relative h-3 bg-black/60 rounded-md overflow-hidden p-0.5 border border-white/10 flex items-center">
+      <div
+        role="meter"
+        aria-label="Microphone input level"
+        aria-valuemin={-60}
+        aria-valuemax={0}
+        aria-valuenow={Math.round(Math.max(-60, currentDb))}
+        aria-valuetext={currentDb <= -58 ? 'Silent' : `${Math.round(currentDb)} decibels`}
+        className="relative h-3 bg-black/60 rounded-md overflow-hidden p-0.5 border border-white/10 flex items-center"
+      >
         {/* Color zone background hints */}
         <div className="absolute inset-0 flex opacity-20 pointer-events-none">
           <div className="w-[70%] bg-emerald-500" />
@@ -188,9 +204,9 @@ export const AudioMeter: React.FC<AudioMeterProps> = ({
       </div>
 
       {showLabels && (
-        <div className="flex justify-between text-[9px] font-mono text-slate-500 px-0.5">
+        <div className="flex justify-between text-xs font-mono text-slate-400 px-0.5">
           <span>-60 dB</span>
-          <span>-36 dB (Noise Gate)</span>
+          <span>-36 dB (Noise cutoff)</span>
           <span>-18 dB (Target)</span>
           <span>-6 dB</span>
           <span className="text-rose-400 font-bold">0 dB</span>
@@ -198,7 +214,7 @@ export const AudioMeter: React.FC<AudioMeterProps> = ({
       )}
 
       {isSilent && (
-        <div className="flex items-center gap-1.5 text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg">
+        <div role="status" className="flex items-center gap-1.5 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-1 rounded-lg">
           <AlertCircle className="w-3.5 h-3.5 shrink-0 text-amber-400" />
           <span>No speech detected. Please speak or check your chosen microphone.</span>
         </div>

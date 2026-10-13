@@ -5,6 +5,7 @@ import { RecordingSetup } from './components/RecordingSetup';
 import { LiveStudio } from './components/LiveStudio';
 import { ExportModal } from './components/ExportModal';
 import { UpgradeModal } from './components/UpgradeModal';
+import { ConfirmDialog } from './components/Modal';
 import { RecordingService } from './core/recordingService';
 import { LicenseService } from './licensing/licenseService';
 import { TEMPLATES } from './core/templateManager';
@@ -59,6 +60,7 @@ export const App: React.FC = () => {
   const [activeWebcamStream, setActiveWebcamStream] = useState<MediaStream | null>(null);
   const [isSimulatedStream, setIsSimulatedStream] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const [pendingNav, setPendingNav] = useState<'welcome' | 'setup' | 'studio' | 'export' | null>(null);
   const [captureWarnings, setCaptureWarnings] = useState<string[]>([]);
   const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
   const [recordedDuration, setRecordedDuration] = useState(0);
@@ -218,12 +220,17 @@ export const App: React.FC = () => {
   };
 
   // Steps that need data (a live stream or a finished take) can't be opened by clicking the nav
-  const handleNavigate = (step: 'welcome' | 'setup' | 'studio' | 'export') => {
+  const handleNavigate = (step: 'welcome' | 'setup' | 'studio' | 'export', confirmed = false) => {
     if (step === currentStep) return;
     if (step === 'studio') return;
     // Nothing to export yet; a fake file here would only fail later in conversion
     if (step === 'export' && !recordedBlob) return;
     if (currentStep === 'studio') {
+      // Leaving the studio throws the take away, so ask first
+      if (!confirmed) {
+        setPendingNav(step);
+        return;
+      }
       // Leaving a live studio discards the take: release screen, mic and camera
       recordingService.stop();
       setActiveStream(null);
@@ -246,7 +253,7 @@ export const App: React.FC = () => {
       {/* Global Navigation */}
       <TopNav
         currentStep={currentStep}
-        onNavigate={handleNavigate}
+        onNavigate={(step) => handleNavigate(step)}
         license={license}
         onOpenUpgrade={() => setIsUpgradeModalOpen(true)}
       />
@@ -408,6 +415,21 @@ export const App: React.FC = () => {
           />
         )}
       </main>
+
+      <ConfirmDialog
+        isOpen={pendingNav !== null}
+        title="Leave and discard this recording?"
+        message="The recording in progress will be thrown away and cannot be recovered."
+        confirmLabel="Discard and leave"
+        cancelLabel="Keep recording"
+        danger
+        onCancel={() => setPendingNav(null)}
+        onConfirm={() => {
+          const target = pendingNav;
+          setPendingNav(null);
+          if (target) handleNavigate(target, true);
+        }}
+      />
 
       {/* Upgrade & License Modal */}
       <UpgradeModal

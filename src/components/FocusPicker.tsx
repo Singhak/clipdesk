@@ -79,12 +79,12 @@ export const FocusPicker: React.FC<FocusPickerProps> = ({ stream, focus, onChang
             boxShadow: '0 0 0 9999px rgba(0,0,0,0.62)'
           }}
         >
-          <span className="absolute -top-0.5 left-1/2 -translate-x-1/2 -translate-y-full text-[10px] font-bold text-indigo-300 bg-black/70 px-1.5 rounded whitespace-nowrap">
+          <span className="absolute -top-0.5 left-1/2 -translate-x-1/2 -translate-y-full text-xs font-bold text-indigo-300 bg-black/70 px-1.5 rounded whitespace-nowrap">
             9:16 reel
           </span>
         </div>
       </div>
-      <label className="flex items-center gap-3 text-[11px] text-slate-400">
+      <label className="flex items-center gap-3 text-xs text-slate-400">
         <span className="shrink-0">Zoom in:</span>
         <input
           type="range"

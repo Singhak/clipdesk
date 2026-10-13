@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { LicenseInfo } from '../core/types';
 import { LicenseService } from '../licensing/licenseService';
+import { ConfirmDialog } from './Modal';
 import { getTierConfig } from '../licensing/tierFeatures';
 
 // Compact license section for the desktop launcher and the extension popup.
@@ -15,6 +16,7 @@ export const LicensePanel: React.FC<LicensePanelProps> = ({ openUrl }) => {
   const [license, setLicense] = useState<LicenseInfo>(() => LicenseService.getLicense());
   const [keyInput, setKeyInput] = useState('');
   const [busy, setBusy] = useState(false);
+  const [confirmDeactivate, setConfirmDeactivate] = useState(false);
   const [message, setMessage] = useState<{ text: string; isError: boolean } | null>(null);
 
   useEffect(() => {
@@ -38,10 +40,10 @@ export const LicensePanel: React.FC<LicensePanelProps> = ({ openUrl }) => {
         <div className="flex items-center justify-between gap-2">
           <span className="text-[12px] font-bold text-amber-300">{license.planName}</span>
           {license.expiresAt && (
-            <span className="text-[10px] text-slate-400">until {new Date(license.expiresAt).toLocaleDateString()}</span>
+            <span className="text-xs text-slate-400">until {new Date(license.expiresAt).toLocaleDateString()}</span>
           )}
         </div>
-        <div className="flex gap-3 text-[11px]">
+        <div className="flex gap-3 text-xs">
           {license.plan === 'monthly' && (
             <button onClick={() => openUrl(LicenseService.getCheckoutUrl('monthly'))} className="text-indigo-300 hover:text-indigo-200 cursor-pointer">
               Renew 30 days
@@ -55,14 +57,26 @@ export const LicensePanel: React.FC<LicensePanelProps> = ({ openUrl }) => {
           {license.licenseKey && (
             <button
               disabled={busy}
-              onClick={() => void run(() => LicenseService.deactivate())}
+              onClick={() => setConfirmDeactivate(true)}
               className="ml-auto text-slate-400 hover:text-rose-300 disabled:opacity-50 cursor-pointer"
             >
               Deactivate this device
             </button>
           )}
         </div>
-        {message && <p className={`text-[11px] ${message.isError ? 'text-rose-300' : 'text-emerald-300'}`}>{message.text}</p>}
+        {message && <p role="status" className={`text-xs ${message.isError ? 'text-rose-300' : 'text-emerald-300'}`}>{message.text}</p>}
+        <ConfirmDialog
+          isOpen={confirmDeactivate}
+          title="Deactivate this device?"
+          message="This device will go back to the free plan. You can activate it again later with your license key."
+          confirmLabel="Deactivate"
+          danger
+          onCancel={() => setConfirmDeactivate(false)}
+          onConfirm={() => {
+            setConfirmDeactivate(false);
+            void run(() => LicenseService.deactivate());
+          }}
+        />
       </section>
     );
   }
@@ -71,7 +85,7 @@ export const LicensePanel: React.FC<LicensePanelProps> = ({ openUrl }) => {
     <section className="space-y-2 p-3 rounded-xl border border-white/10 bg-white/[0.03]">
       <div className="flex items-center justify-between gap-2">
         <span className="text-[12px] font-bold">Free plan</span>
-        <span className="text-[10px] text-slate-400">Watermark · {getTierConfig(false).maxDurationSeconds}s limit</span>
+        <span className="text-xs text-slate-400">Watermark · {getTierConfig(false).maxDurationSeconds}s limit</span>
       </div>
       <form
         className="flex gap-1.5"
@@ -85,17 +99,17 @@ export const LicensePanel: React.FC<LicensePanelProps> = ({ openUrl }) => {
           onChange={(e) => setKeyInput(e.target.value)}
           placeholder="CLIP-XXXX-XXXX-XXXX"
           aria-label="License key"
-          className="flex-1 min-w-0 px-2 py-1.5 rounded-lg bg-black/40 border border-white/10 text-[11px] font-mono"
+          className="flex-1 min-w-0 px-2 py-1.5 rounded-lg bg-black/40 border border-white/10 text-xs font-mono"
         />
         <button
           type="submit"
           disabled={busy || !keyInput.trim()}
-          className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-[11px] font-bold cursor-pointer"
+          className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-xs font-bold cursor-pointer"
         >
           {busy ? '…' : 'Activate'}
         </button>
       </form>
-      <div className="flex gap-3 text-[11px]">
+      <div className="flex gap-3 text-xs">
         <button onClick={() => openUrl(LicenseService.getCheckoutUrl('lifetime'))} className="text-amber-300 hover:text-amber-200 font-bold cursor-pointer">
           Buy Pro
         </button>
@@ -110,7 +124,7 @@ export const LicensePanel: React.FC<LicensePanelProps> = ({ openUrl }) => {
           7-day trial
         </button>
       </div>
-      {message && <p className={`text-[11px] ${message.isError ? 'text-rose-300' : 'text-emerald-300'}`}>{message.text}</p>}
+      {message && <p role="status" className={`text-xs ${message.isError ? 'text-rose-300' : 'text-emerald-300'}`}>{message.text}</p>}
     </section>
   );
 };

@@ -123,17 +123,30 @@ let whisperQueue: Promise<unknown> = Promise.resolve();
 /** Runs one transcription in the shared Whisper worker; requests are queued, the model stays loaded */
 function runWhisperWorker(
   req: WhisperRequest,
-  onProgress: (info: { status: string; progress: number }) => void
+  onProgress: (info: { status: string; progress: number }) => void,
+  signal?: AbortSignal
 ): Promise<Extract<WhisperMessage, { type: 'result' }>> {
   const run = () =>
     new Promise<Extract<WhisperMessage, { type: 'result' }>>((resolve, reject) => {
+      if (signal?.aborted) {
+        reject(new DOMException('Transcription cancelled', 'AbortError'));
+        return;
+      }
       if (!whisperWorker) {
         whisperWorker = new Worker(new URL('./whisper.worker.ts', import.meta.url), { type: 'module' });
       }
       const worker = whisperWorker;
+      const onAbort = () => {
+        cleanup();
+        // The worker can't be interrupted mid-inference, so stop it; the model reloads from the browser cache next time
+        worker.terminate();
+        if (whisperWorker === worker) whisperWorker = null;
+        reject(new DOMException('Transcription cancelled', 'AbortError'));
+      };
       const cleanup = () => {
         worker.removeEventListener('message', onMessage);
         worker.removeEventListener('error', onError);
+        signal?.removeEventListener('abort', onAbort);
       };
       const onMessage = (e: MessageEvent<WhisperMessage>) => {
         const msg = e.data;
@@ -155,6 +168,7 @@ function runWhisperWorker(
       };
       worker.addEventListener('message', onMessage);
       worker.addEventListener('error', onError);
+      signal?.addEventListener('abort', onAbort);
       worker.postMessage(req, [req.audio.buffer]);
     });
   const next = whisperQueue.then(run, run);
@@ -554,6 +568,7 @@ export class CaptionEngine {
     model?: 'Xenova/whisper-tiny.en' | 'Xenova/whisper-tiny';
     language?: string;
     onProgress?: (info: { status: string; progress?: number }) => void;
+    signal?: AbortSignal;
   }): Promise<CaptionSegment[]> {
     options.onProgress?.({ status: 'Decoding audio track from video take...', progress: 10 });
 
@@ -592,7 +607,8 @@ export class CaptionEngine {
 
     // Inference runs in a worker so the page doesn't freeze during a long transcription
     const result = await runWhisperWorker({ audio: audioData, model: modelName, language }, (m) =>
-      options.onProgress?.(m)
+      options.onProgress?.(m),
+      options.signal
     );
 
     const segments: CaptionSegment[] = [];

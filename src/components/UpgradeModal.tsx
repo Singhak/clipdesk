@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Check, Crown, Sparkles, Key, CreditCard, Shield, ExternalLink, Laptop } from 'lucide-react';
 import { LicenseInfo } from '../core/types';
+import { Modal, ConfirmDialog } from './Modal';
 import { LicenseService } from '../licensing/licenseService';
 import { DISPLAY_PRICES, getTierConfig } from '../licensing/tierFeatures';
 
@@ -17,6 +18,8 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, lic
   const [licenseKeyInput, setLicenseKeyInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; isError: boolean } | null>(null);
+
+  const [confirmDeactivate, setConfirmDeactivate] = useState(false);
 
   if (!isOpen) return null;
 
@@ -52,8 +55,13 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, lic
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-      <div className="relative w-full max-w-2xl bg-[#0e111a] border border-white/10 rounded-2xl shadow-2xl p-6 sm:p-8 overflow-hidden max-h-[90vh] overflow-y-auto">
+    <Modal
+      isOpen={isOpen}
+      onClose={onClose}
+      labelledBy="upgrade-modal-title"
+      panelClassName="relative w-full max-w-2xl bg-[#0e111a] border border-white/10 rounded-2xl shadow-2xl p-6 sm:p-8 overflow-hidden max-h-[90vh] overflow-y-auto"
+    >
+      <>
         {/* Glow backdrop */}
         <div className="absolute -top-24 -right-24 w-72 h-72 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
@@ -61,10 +69,11 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, lic
         {/* Close Button */}
         <button
           id="btn-close-upgrade-modal"
+          aria-label="Close"
           onClick={onClose}
           className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-lg hover:bg-white/5 transition-all cursor-pointer"
         >
-          <X className="w-5 h-5" />
+          <X className="w-5 h-5" aria-hidden="true" />
         </button>
 
         {/* Modal Header */}
@@ -73,7 +82,7 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, lic
             <Crown className="w-3.5 h-3.5" />
             <span>CLIPDESK PRO CREATOR</span>
           </div>
-          <h2 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Level Up Your Vertical Video</h2>
+          <h2 id="upgrade-modal-title" className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Level Up Your Vertical Video</h2>
           <p className="text-xs sm:text-sm text-slate-400 mt-2">
             One license for Web, the Chrome Extension and the Desktop app. ClipDesk is open source; Pro supports development and
             unlocks watermark-free exports in the official builds.
@@ -82,6 +91,7 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, lic
           {/* Tab Switcher */}
           <div className="flex justify-center gap-2 mt-4">
             <button
+              aria-pressed={activeTab === 'plans'}
               onClick={() => setActiveTab('plans')}
               className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'plans' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'
@@ -90,6 +100,7 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, lic
               Plans
             </button>
             <button
+              aria-pressed={activeTab === 'devices'}
               onClick={() => setActiveTab('devices')}
               className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'devices' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'
@@ -121,15 +132,15 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, lic
                     <span>On-device captions (Whisper)</span>
                   </li>
                   <li className="flex items-center gap-2 text-slate-400">
-                    <span className="w-4 h-4 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center text-[10px] shrink-0 font-bold">!</span>
+                    <span className="w-4 h-4 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center text-xs shrink-0 font-bold">!</span>
                     <span>{FREE_LIMIT}-second recording limit</span>
                   </li>
                   <li className="flex items-center gap-2 text-slate-400">
-                    <span className="w-4 h-4 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center text-[10px] shrink-0 font-bold">!</span>
+                    <span className="w-4 h-4 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center text-xs shrink-0 font-bold">!</span>
                     <span>ClipDesk watermark</span>
                   </li>
                   <li className="flex items-center gap-2 text-slate-400">
-                    <span className="w-4 h-4 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center text-[10px] shrink-0 font-bold">!</span>
+                    <span className="w-4 h-4 rounded-full bg-amber-500/10 text-amber-400 flex items-center justify-center text-xs shrink-0 font-bold">!</span>
                     <span>Standard export bitrate (6 Mbps)</span>
                   </li>
                 </ul>
@@ -141,7 +152,7 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, lic
                   isPro ? 'border-amber-500/50 bg-amber-500/[0.05]' : 'border-indigo-500/30 bg-gradient-to-b from-indigo-500/10 to-transparent'
                 }`}
               >
-                <div className="absolute top-3 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-400 text-black uppercase">
+                <div className="absolute top-3 right-3 text-xs font-bold px-2 py-0.5 rounded-full bg-amber-400 text-black uppercase">
                   Best value
                 </div>
                 <div className="text-sm font-semibold text-amber-400 mb-1 flex items-center gap-1.5">
@@ -151,7 +162,7 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, lic
                 <div className="text-2xl font-bold text-white">
                   {DISPLAY_PRICES.lifetime} <span className="text-xs font-normal text-slate-400">/ lifetime</span>
                 </div>
-                <div className="text-[11px] text-slate-400 mb-4">or {DISPLAY_PRICES.monthly} for a 30-day pass</div>
+                <div className="text-xs text-slate-400 mb-4">or {DISPLAY_PRICES.monthly} for a 30-day pass</div>
                 <ul className="space-y-2.5 text-xs text-white">
                   <li className="flex items-center gap-2 font-medium">
                     <Check className="w-4 h-4 text-amber-400 shrink-0" />
@@ -195,6 +206,7 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, lic
                 <div className="relative flex-1">
                   <input
                     id="input-license-key"
+                    aria-label="License key"
                     type="text"
                     value={licenseKeyInput}
                     onChange={(e) => setLicenseKeyInput(e.target.value)}
@@ -273,7 +285,7 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, lic
                     </span>
                   </div>
                   {license.licenseKey && (
-                    <div className="text-[11px] text-slate-300">
+                    <div className="text-xs text-slate-300">
                       Key: <span className="font-mono select-all">{license.licenseKey}</span>
                     </div>
                   )}
@@ -281,7 +293,7 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, lic
                     <button
                       id="btn-deactivate-device"
                       disabled={busy}
-                      onClick={() => void run(() => LicenseService.deactivate(), false)}
+                      onClick={() => setConfirmDeactivate(true)}
                       className="text-xs text-slate-300 hover:text-rose-300 px-3 py-1.5 rounded-lg border border-white/10 hover:bg-white/5 disabled:opacity-50 transition-all cursor-pointer"
                     >
                       Deactivate this device
@@ -315,7 +327,20 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, lic
             <span>{message.text}</span>
           </div>
         )}
-      </div>
-    </div>
+
+        <ConfirmDialog
+          isOpen={confirmDeactivate}
+          title="Deactivate this device?"
+          message="This device will go back to the free plan (watermark and time limit). You can activate it again later with your license key."
+          confirmLabel="Deactivate"
+          danger
+          onCancel={() => setConfirmDeactivate(false)}
+          onConfirm={() => {
+            setConfirmDeactivate(false);
+            void run(() => LicenseService.deactivate(), false);
+          }}
+        />
+      </>
+    </Modal>
   );
 };

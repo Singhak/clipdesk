@@ -27,6 +27,8 @@ import {
   colorWithAlpha
 } from '../core/captionEngine';
 import { recoveryService } from '../core/recordingRecoveryService';
+import { ProgressBar } from './ProgressBar';
+import { friendlyError } from './friendlyError';
 
 interface ExportModalProps {
   recordedBlob: Blob;
@@ -155,7 +157,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         saveBlob(await getOutputBlob());
       } catch (e: any) {
         console.error('MP4 conversion failed:', e);
-        setConvertError(e?.message || 'MP4 conversion failed. You can download the original recording instead.');
+        setConvertError(friendlyError(e, 'convert'));
       }
       return;
     }
@@ -186,7 +188,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
       );
     } catch (e: any) {
       console.error('Caption burning error:', e);
-      setBurnError(e?.message || 'In-browser caption burning encountered an issue. You can download the raw recording.');
+      setBurnError(friendlyError(e, 'burn'));
     } finally {
       setIsBurningCaptions(false);
       setBurnProgress(null);
@@ -198,7 +200,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     try {
       outBlob = await getOutputBlob();
     } catch (e: any) {
-      setConvertError(e?.message || 'MP4 conversion failed. You can download the original recording instead.');
+      setConvertError(friendlyError(e, 'convert'));
       return;
     }
     try {
@@ -211,7 +213,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           title: 'ClipDesk Vertical Reel',
           text: 'Captured with ClipDesk'
         });
-        setShareFeedback('✓ Reel shared successfully!');
+        setShareFeedback('Shared!');
         setTimeout(() => setShareFeedback(null), 3000);
         return;
       }
@@ -222,7 +224,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
     // Direct local save fallback
     saveBlob(outBlob);
-    setShareFeedback('✓ Saved directly to disk!');
+    setShareFeedback('Saved to your device.');
     setTimeout(() => setShareFeedback(null), 3000);
   };
 
@@ -233,10 +235,15 @@ export const ExportModal: React.FC<ExportModalProps> = ({
     watermark: !isPro
   });
 
-  const handleCopyFFmpeg = () => {
-    navigator.clipboard.writeText(ffmpegCommand);
-    setCopiedCmd(true);
-    setTimeout(() => setCopiedCmd(false), 2000);
+  const handleCopyFFmpeg = async () => {
+    try {
+      await navigator.clipboard.writeText(ffmpegCommand);
+      setCopiedCmd(true);
+      setTimeout(() => setCopiedCmd(false), 2000);
+    } catch {
+      setShareFeedback('Could not copy. Select the command and copy it manually.');
+      setTimeout(() => setShareFeedback(null), 3000);
+    }
   };
 
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
@@ -270,7 +277,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
         <p className="text-xs sm:text-sm text-slate-400 mt-2">
           {isWide
             ? 'Full-screen 16:9 recording with your camera bubble, ready to share.'
-            : 'Deterministic 9:16 vertical crop generated with zero manual video editing required.'}
+            : 'Your vertical 9:16 video is ready. Preview it, trim it, add captions, then download.'}
         </p>
       </div>
 
@@ -288,6 +295,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               <>
                 <video
                   ref={setPreviewVideo}
+                  aria-label="Recording preview"
                   src={videoUrl}
                   controls
                   autoPlay
@@ -378,11 +386,11 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               </>
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center text-slate-500">
-                <span>9:16 Video Preview</span>
+                <span>Preview not available</span>
               </div>
             )}
           </div>
-          <span className="text-[11px] font-mono text-slate-400 mt-2">
+          <span className="text-xs font-mono text-slate-400 mt-2">
             {videoSize ? `${videoSize.w} × ${videoSize.h}` : isWide ? '1920 × 1080' : '1080 × 1920'}
             {isWide ? ' • Widescreen' : ' • Vertical'}
           </span>
@@ -393,19 +401,19 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           {/* Stats Bar */}
           <div className="glass-card p-3.5 grid grid-cols-3 gap-3 text-center">
             <div className="bg-black/30 p-2 rounded-lg border border-white/5">
-              <div className="text-slate-400 text-[10px]">Duration</div>
+              <div className="text-slate-400 text-xs">Duration</div>
               <div className="font-mono font-bold text-white text-sm mt-0.5">
                 {formatTimer(effectiveDuration)}
               </div>
             </div>
             <div className="bg-black/30 p-2 rounded-lg border border-white/5">
-              <div className="text-slate-400 text-[10px]">Aspect Ratio</div>
+              <div className="text-slate-400 text-xs">Shape</div>
               <div className="font-mono font-bold text-indigo-400 text-sm mt-0.5">
                 {isWide ? '16 : 9' : '9 : 16'}
               </div>
             </div>
             <div className="bg-black/30 p-2 rounded-lg border border-white/5">
-              <div className="text-slate-400 text-[10px]">Format</div>
+              <div className="text-slate-400 text-xs">Format</div>
               <div className="font-mono font-bold text-emerald-400 text-sm mt-0.5">
                 {(needsConversion ? 'mp4' : fileExt).toUpperCase()}
               </div>
@@ -415,7 +423,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
           {lostFootage && (
             <div role="alert" className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200">
               This file is only {fileDuration!.toFixed(1)} seconds long, but you recorded for {formatTimer(durationSeconds)}.
-              Unsaved chunks were preserved in IndexedDB recovery storage.
+              A backup of the unsaved parts is kept in your browser, so you can restore them next time you open ClipDesk.
             </div>
           )}
 
@@ -450,13 +458,13 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   {isPro ? (
                     <span className="text-emerald-400 font-semibold">Removed (Pro Plan)</span>
                   ) : (
-                    <span className="text-amber-400 font-semibold">Enabled ("Made with ClipDesk")</span>
+                    <span className="text-amber-400 font-semibold">On ("Made with ClipDesk")</span>
                   )}
                 </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
+                <div className="text-xs text-slate-400 mt-0.5">
                   {isPro
-                    ? 'Pristine export with zero watermark branding.'
-                    : 'Upgrade to remove the watermark and record at a higher bitrate (16 Mbps).'}
+                    ? 'Exported without a watermark.'
+                    : 'Upgrade to remove the watermark and get higher video quality.'}
                 </div>
               </div>
 
@@ -473,56 +481,79 @@ export const ExportModal: React.FC<ExportModalProps> = ({
             </div>
           </div>
 
-          {/* Main Download CTA */}
+          {/* Main Download CTA: one clear primary action */}
           <div className="pt-1 space-y-2">
-            {/* If Captions are enabled, offer 1-Click Download with Burned-In Captions */}
-            {captionsEnabled && captionSegments.length > 0 && (
-              <button
-                id="btn-export-with-captions"
-                onClick={handleBurnAndDownload}
-                disabled={isBurningCaptions || isDownloading || isConverting}
-                className="w-full flex items-center justify-center gap-2.5 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 hover:from-amber-400 hover:to-amber-300 text-black text-sm sm:text-base font-black shadow-xl shadow-amber-500/25 transition-all cursor-pointer"
-              >
-                <Subtitles className="w-5 h-5 text-black shrink-0" />
-                <span>
-                  {isBurningCaptions
-                    ? `Burning Captions to Video… ${Math.round((burnProgress ?? 0) * 100)}%`
-                    : `Download with Burned-In Captions (${sizeLabel})`}
-                </span>
-              </button>
+            {(() => {
+              const hasCaptions = captionsEnabled && captionSegments.length > 0;
+              const busy = isBurningCaptions || isDownloading || isConverting;
+              const primaryLabel = isBurningCaptions
+                ? 'Adding captions...'
+                : isConverting
+                  ? 'Converting...'
+                  : isDownloading
+                    ? 'Preparing download...'
+                    : hasCaptions
+                      ? `Download with captions (${sizeLabel})`
+                      : needsConversion
+                        ? isTrimmed
+                          ? `Download trimmed video (${sizeLabel} MP4)`
+                          : `Download as MP4 (${sizeLabel})`
+                        : `Download (${sizeLabel} ${fileExt.toUpperCase()})`;
+              return (
+                <>
+                  <button
+                    id="btn-one-click-export"
+                    onClick={hasCaptions ? handleBurnAndDownload : handleDownload}
+                    disabled={busy}
+                    className="w-full flex items-center justify-center gap-3 py-3.5 rounded-xl text-sm sm:text-base font-extrabold transition-all cursor-pointer btn-primary shadow-xl shadow-indigo-500/30 disabled:opacity-60"
+                  >
+                    {hasCaptions ? <Subtitles className="w-5 h-5" aria-hidden="true" /> : <Download className="w-5 h-5" aria-hidden="true" />}
+                    <span>{primaryLabel}</span>
+                  </button>
+
+                  {hasCaptions && (
+                    <button
+                      id="btn-export-original"
+                      type="button"
+                      onClick={handleDownload}
+                      disabled={busy}
+                      className="w-full py-1.5 text-xs text-slate-300 hover:text-white underline cursor-pointer disabled:opacity-50"
+                    >
+                      Download without captions instead
+                    </button>
+                  )}
+                </>
+              );
+            })()}
+
+            {isBurningCaptions && (
+              <ProgressBar
+                label="Adding captions to your video"
+                value={burnProgress}
+                detail="This runs in your browser and can take about as long as the video. Keep this tab open."
+              />
+            )}
+            {isConverting && (
+              <ProgressBar
+                label="Converting to MP4"
+                value={convertProgress}
+                detail="This runs in your browser and nothing is uploaded. Keep this tab open."
+              />
             )}
 
             {burnError && (
               <div role="alert" className="p-2 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 text-center">
-                {burnError}
+                {burnError}{' '}
+                <button
+                  type="button"
+                  onClick={() => void handleBurnAndDownload()}
+                  disabled={isBurningCaptions}
+                  className="underline font-bold cursor-pointer"
+                >
+                  Try again
+                </button>
               </div>
             )}
-
-            <button
-              id="btn-one-click-export"
-              onClick={handleDownload}
-              disabled={isDownloading || isConverting || isBurningCaptions}
-              className={`w-full flex items-center justify-center gap-3 py-3 rounded-xl text-sm sm:text-base font-extrabold transition-all cursor-pointer ${
-                captionsEnabled && captionSegments.length > 0
-                  ? 'bg-white/10 hover:bg-white/15 border border-white/15 text-white'
-                  : 'btn-primary shadow-xl shadow-indigo-500/30'
-              }`}
-            >
-              <Download className="w-5 h-5" />
-              <span>
-                {isConverting
-                  ? `Converting to MP4… ${Math.round((convertProgress ?? 0) * 100)}%`
-                  : isDownloading
-                    ? 'Packaging Video...'
-                    : needsConversion
-                      ? isTrimmed
-                        ? `Cut & Download ${sizeLabel} MP4`
-                        : `Convert & Download ${sizeLabel} MP4`
-                      : captionsEnabled && captionSegments.length > 0
-                        ? `Download Original (Without Burned Captions)`
-                        : `Download ${sizeLabel} ${fileExt.toUpperCase()}`}
-              </span>
-            </button>
 
             {/* Honest Device Share & Local Export */}
             <button
@@ -531,25 +562,29 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               onClick={handleShareVideo}
               className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-slate-200 transition-colors cursor-pointer"
             >
-              <Share2 className="w-3.5 h-3.5 text-indigo-400" />
-              <span>{shareFeedback || 'Share Video / Quick Export'}</span>
+              <Share2 className="w-3.5 h-3.5 text-indigo-400" aria-hidden="true" />
+              <span>{shareFeedback || 'Share or save to device'}</span>
             </button>
+            <div aria-live="polite" className="sr-only">
+              {shareFeedback}
+            </div>
 
             {needsConversion && !isConverting && (
-              <p className="text-[11px] text-slate-400 mt-1 text-center">
+              <p className="text-xs text-slate-400 mt-1 text-center">
                 {isTrimmed
-                  ? 'The cut video is re-encoded to MP4 in your browser; long videos can take a while.'
-                  : 'Your browser recorded WebM. Conversion to MP4 runs in your browser (no upload).'}
+                  ? 'The trimmed video is re-encoded to MP4 in your browser; long videos can take a while.'
+                  : 'Your browser recorded WebM. It is converted to MP4 in your browser (nothing is uploaded).'}
               </p>
             )}
 
             {convertError && (
-              <div role="alert" className="mt-2 text-center text-[11px] text-amber-400">
+              <div role="alert" className="mt-2 text-center text-xs text-amber-300">
                 {convertError}{' '}
-                <button
-                  onClick={() => saveBlob(recordedBlob)}
-                  className="underline cursor-pointer"
-                >
+                <button type="button" onClick={() => void handleDownload()} className="underline font-bold cursor-pointer">
+                  Try again
+                </button>
+                {' · '}
+                <button type="button" onClick={() => saveBlob(recordedBlob)} className="underline cursor-pointer">
                   Download the original recording
                 </button>
               </div>
@@ -558,8 +593,8 @@ export const ExportModal: React.FC<ExportModalProps> = ({
 
           {/* Target Platforms */}
           <div className="glass-card p-3 flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-300">Ready to Publish:</span>
-            <div className="flex flex-wrap gap-2 text-[11px]">
+            <span className="text-xs font-bold text-slate-300">Ready to Publish:</span>
+            <div className="flex flex-wrap gap-2 text-xs">
               <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-pink-500/10 border border-pink-500/20 text-pink-300 font-medium">
                 <InstagramIcon className="w-3 h-3 text-pink-400" />
                 <span>Instagram Reels</span>
@@ -569,32 +604,33 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                 <span>YouTube Shorts</span>
               </div>
               <div className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 font-medium">
-                <span className="font-bold text-[10px]">TT</span>
+                <span className="font-bold text-xs">TT</span>
                 <span>TikTok</span>
               </div>
             </div>
           </div>
 
           {/* Desktop FFmpeg Pipeline Info */}
-          <div className="p-3 rounded-xl bg-black/40 border border-white/5">
-            <div className="flex items-center justify-between mb-1.5">
+          <details className="p-3 rounded-xl bg-black/40 border border-white/5">
+            <summary className="cursor-pointer text-xs text-slate-300 select-none">For advanced users: FFmpeg command</summary>
+            <div className="flex items-center justify-between my-1.5">
               <div className="flex items-center gap-1.5 text-xs font-mono text-slate-400">
-                <Terminal className="w-3.5 h-3.5 text-indigo-400" />
+                <Terminal className="w-3.5 h-3.5 text-indigo-400" aria-hidden="true" />
                 <span>Desktop FFmpeg Command</span>
               </div>
               <button
                 id="btn-copy-ffmpeg"
-                onClick={handleCopyFFmpeg}
-                className="flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300 cursor-pointer"
+                onClick={() => void handleCopyFFmpeg()}
+                className="flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300 cursor-pointer"
               >
                 <Copy className="w-3 h-3" />
                 <span>{copiedCmd ? 'Copied!' : 'Copy'}</span>
               </button>
             </div>
-            <pre className="text-[10px] font-mono text-slate-400 overflow-x-auto p-2 rounded bg-black/50 border border-white/5">
+            <pre className="text-xs font-mono text-slate-400 overflow-x-auto p-2 rounded bg-black/50 border border-white/5">
               {ffmpegCommand}
             </pre>
-          </div>
+          </details>
 
           {/* Restart option */}
           <div className="flex justify-center pt-1">
@@ -604,7 +640,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
               className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              <span>Record Another Clip</span>
+              <span>Record another clip</span>
             </button>
           </div>
         </div>

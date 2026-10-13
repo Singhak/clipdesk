@@ -45,6 +45,9 @@ import {
   generateSegmentsFromText,
   colorWithAlpha
 } from '../core/captionEngine';
+import { ConfirmDialog } from './Modal';
+import { ProgressBar } from './ProgressBar';
+import { friendlyError } from './friendlyError';
 
 interface CaptionsGeneratorProps {
   enabled: boolean;
@@ -99,6 +102,10 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
     'Xenova/whisper-tiny.en'
   );
   const [localWhisperProgress, setLocalWhisperProgress] = useState<{ status: string; progress?: number } | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [undoState, setUndoState] = useState<{ segments: CaptionSegment[]; label: string } | null>(null);
+  const undoTimerRef = useRef<number | null>(null);
   const [whisperLang, setWhisperLang] = useState('auto');
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [whisperError, setWhisperError] = useState<string | null>(null);
@@ -148,9 +155,11 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
   const [speechMode, setSpeechMode] = useState<'append' | 'replace'>('append');
   const recognitionRef = useRef<any>(null);
 
-  // Stop speech recognition on unmount
+  // Stop speech recognition, transcription and the undo timer on unmount
   useEffect(() => {
     return () => {
+      abortRef.current?.abort();
+      if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current);
       if (recognitionRef.current) {
         try {
           recognitionRef.current.stop();
@@ -163,7 +172,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
     setSpeechError(null);
     const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRec) {
-      setSpeechError('Web Speech API is not supported in this browser. Please use Chrome, Edge, or Safari.');
+      setSpeechError('Voice dictation is not supported in this browser. Use Chrome, Edge or Safari, or type the captions.');
       return;
     }
 
@@ -230,7 +239,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
         } else if (e.error === 'no-speech') {
           // No speech detected, ignore or keep listening
         } else {
-          setSpeechError(`Speech recognition notice: ${e.error}`);
+          setSpeechError(friendlyError({ message: String(e.error) }, 'transcribe'));
         }
       };
 
@@ -243,7 +252,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
       rec.start();
     } catch (e: any) {
       console.error('Failed to launch Web Speech API:', e);
-      setSpeechError(e?.message || 'Could not start speech recognition.');
+      setSpeechError(friendlyError(e, 'transcribe'));
       setIsListening(false);
     }
   };
@@ -265,35 +274,41 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
     setWhisperSuccess(null);
 
     if (!recordedBlob || recordedBlob.size === 0) {
-      setWhisperError('No recorded video/audio track available to transcribe.');
+      setWhisperError('There is no recording to transcribe yet.');
       return;
     }
 
     if (whisperProvider === 'local') {
       setIsTranscribing(true);
-      setLocalWhisperProgress({ status: 'Initializing local Whisper.wasm engine...', progress: 10 });
+      setLocalWhisperProgress({ status: 'Preparing your clip...' });
+      const controller = new AbortController();
+      abortRef.current = controller;
       try {
         const results = await CaptionEngine.transcribeWithLocalWhisper({
           blob: recordedBlob,
           model: localWhisperModel,
           language: whisperLang !== 'auto' ? whisperLang : undefined,
-          onProgress: (p) => setLocalWhisperProgress(p)
+          onProgress: (p) => setLocalWhisperProgress(p),
+          signal: controller.signal
         });
 
         if (!results || results.length === 0) {
-          setWhisperError('Local Whisper completed, but no spoken audio was detected in this clip.');
+          setWhisperError('No speech was detected in this clip.');
           return;
         }
 
         onUpdateSegments(results);
         onToggleEnabled(true);
-        setWhisperSuccess(
-          `🎉 Success! Local Whisper.wasm transcribed ${results.length} lines on your device with 0 API keys!`
-        );
+        setWhisperSuccess(`Done. Created ${results.length} caption lines on your device.`);
       } catch (err: any) {
-        console.error('Local Whisper error:', err);
-        setWhisperError(err?.message || 'Failed to transcribe audio locally with Whisper.');
+        if (err?.name === 'AbortError') {
+          setWhisperSuccess('Transcription cancelled.');
+        } else {
+          console.error('Local transcription error:', err);
+          setWhisperError(friendlyError(err, 'transcribe'));
+        }
       } finally {
+        abortRef.current = null;
         setIsTranscribing(false);
         setLocalWhisperProgress(null);
       }
@@ -303,7 +318,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
     const key = whisperApiKey.trim();
     if (!key) {
       setWhisperError(
-        `Please enter your ${whisperProvider === 'groq' ? 'Groq' : 'OpenAI'} API key. Free Groq keys take 10 seconds at console.groq.com.`
+        `Enter your ${whisperProvider === 'groq' ? 'Groq' : 'OpenAI'} API key first. Free Groq keys take about 10 seconds to get at console.groq.com.`
       );
       return;
     }
@@ -320,16 +335,16 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
       });
 
       if (!results || results.length === 0) {
-        setWhisperError('Whisper completed, but no spoken audio was detected in this clip.');
+        setWhisperError('No speech was detected in this clip.');
         return;
       }
 
       onUpdateSegments(results);
       onToggleEnabled(true);
-      setWhisperSuccess(`🎉 Success! Transcribed ${results.length} timestamped caption lines from your video.`);
+      setWhisperSuccess(`Done. Created ${results.length} caption lines.`);
     } catch (err: any) {
-      console.error('Whisper transcription error:', err);
-      setWhisperError(err?.message || 'Failed to transcribe audio with Whisper.');
+      console.error('Transcription error:', err);
+      setWhisperError(friendlyError(err, 'transcribe'));
     } finally {
       setIsTranscribing(false);
     }
@@ -349,12 +364,12 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
         if (parsed.length > 0) {
           onUpdateSegments(parsed);
           onToggleEnabled(true);
-          setWhisperSuccess(`✓ Imported ${parsed.length} subtitle lines from ${file.name}!`);
+          setWhisperSuccess(`Imported ${parsed.length} subtitle lines from ${file.name}.`);
         } else {
-          setWhisperError('No timestamped subtitle segments found in this file.');
+          setWhisperError('No timed subtitle lines were found in this file. Use an .srt or .vtt file.');
         }
       } catch (err: any) {
-        setWhisperError('Could not parse subtitle file: ' + err.message);
+        setWhisperError('We could not read that subtitle file. Use a valid .srt or .vtt file.');
       }
     };
     reader.readAsText(file);
@@ -442,8 +457,22 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
     setEditingId(null);
   };
 
+  const showUndo = (previous: CaptionSegment[], label: string) => {
+    if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current);
+    setUndoState({ segments: previous, label });
+    undoTimerRef.current = window.setTimeout(() => setUndoState(null), 8000);
+  };
+
   const handleDeleteSegment = (id: string) => {
+    showUndo(segments, 'Caption line deleted.');
     onUpdateSegments(segments.filter((s) => s.id !== id));
+  };
+
+  const handleUndo = () => {
+    if (!undoState) return;
+    onUpdateSegments(undoState.segments);
+    setUndoState(null);
+    if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current);
   };
 
   const handleDuplicateSegment = (seg: CaptionSegment) => {
@@ -471,6 +500,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
   };
 
   const handleClearAll = () => {
+    showUndo(segments, 'All caption lines cleared.');
     onUpdateSegments([]);
   };
 
@@ -545,14 +575,14 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-white tracking-wide">
-                Dynamic Captions Studio
+                Captions
               </span>
-              <span className="text-[10px] text-amber-300 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30 font-bold">
-                +80% Viewer Retention
+              <span className="text-xs text-amber-300 bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30 font-bold">
+                Boost watch time
               </span>
             </div>
-            <p className="text-[10px] text-slate-400">
-              Type subtitles or dictate with Web Speech API · Fully customizable location, size & background
+            <p className="text-xs text-slate-400">
+              Auto-generate, dictate or type captions. Change position, size and background.
             </p>
           </div>
         </div>
@@ -561,6 +591,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
           id="btn-toggle-captions"
           type="button"
           onClick={() => onToggleEnabled(!enabled)}
+          aria-pressed={enabled}
           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
             enabled
               ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/30 hover:bg-amber-400'
@@ -579,6 +610,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
               id="tab-whisper-captions"
               type="button"
               onClick={() => setActiveTab('whisper')}
+              aria-pressed={activeTab === 'whisper'}
               className={`flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'whisper'
                   ? 'bg-amber-500 text-black shadow-md shadow-amber-500/20'
@@ -586,8 +618,8 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
               }`}
             >
               <Zap className="w-3.5 h-3.5" />
-              <span>Whisper AI</span>
-              <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-black/30 font-extrabold uppercase tracking-wider">
+              <span>Auto captions</span>
+              <span className="text-xs px-1.5 py-0.2 rounded-full bg-black/30 font-extrabold uppercase tracking-wider">
                 Pro
               </span>
             </button>
@@ -596,6 +628,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
               id="tab-speech-captions"
               type="button"
               onClick={() => setActiveTab('speech')}
+              aria-pressed={activeTab === 'speech'}
               className={`flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'speech'
                   ? 'bg-indigo-600 text-white shadow-md'
@@ -603,7 +636,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
               }`}
             >
               <Mic className="w-3.5 h-3.5" />
-              <span>Web Speech</span>
+              <span>Dictate</span>
               {isListening && (
                 <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
               )}
@@ -613,6 +646,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
               id="tab-type-captions"
               type="button"
               onClick={() => setActiveTab('type')}
+              aria-pressed={activeTab === 'type'}
               className={`flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'type'
                   ? 'bg-indigo-600 text-white shadow-md'
@@ -620,9 +654,9 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
               }`}
             >
               <Type className="w-3.5 h-3.5" />
-              <span>Type / SRT</span>
+              <span>Type / Import</span>
               {segments.length > 0 && (
-                <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/40 text-indigo-200">
+                <span className="text-xs px-1.5 py-0.2 rounded-full bg-black/40 text-indigo-200">
                   {segments.length}
                 </span>
               )}
@@ -632,6 +666,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
               id="tab-style-captions"
               type="button"
               onClick={() => setActiveTab('style')}
+              aria-pressed={activeTab === 'style'}
               className={`flex items-center justify-center gap-1.5 py-1.5 px-2.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'style'
                   ? 'bg-indigo-600 text-white shadow-md'
@@ -654,25 +689,24 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold text-white flex items-center gap-1.5">
                       <Zap className="w-3.5 h-3.5 text-amber-400" />
-                      Automatic Speech-To-Text (Whisper AI)
+                      Automatic captions from your speech
                     </span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
-                      Word-Level Precision
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold">
+                      Word-by-word timing
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-400 leading-relaxed">
-                    Accurately transcribe spoken audio from this video take using Groq or OpenAI Whisper.
-                    Zero audio stored on servers — calls run client-side.
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Turn the spoken audio in this clip into timed captions, on your device or with your own Groq or OpenAI key.
                   </p>
                 </div>
 
                 {recordedBlob ? (
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] shrink-0 self-start sm:self-center">
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs shrink-0 self-start sm:self-center">
                     <Check className="w-3.5 h-3.5" />
                     <span>Clip Ready ({(recordedBlob.size / 1024 / 1024).toFixed(1)} MB)</span>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-400 text-[11px] shrink-0 self-start sm:self-center">
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-400 text-xs shrink-0 self-start sm:self-center">
                     <span>No clip recorded yet</span>
                   </div>
                 )}
@@ -684,13 +718,26 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                   className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-300 flex items-start justify-between gap-2"
                 >
                   <span>{whisperError}</span>
-                  <button
-                    type="button"
-                    onClick={() => setWhisperError(null)}
-                    className="text-rose-400 hover:text-rose-200 cursor-pointer font-bold text-xs"
-                  >
-                    ✕
-                  </button>
+                  <span className="flex items-center gap-3 shrink-0">
+                    {recordedBlob && (
+                      <button
+                        type="button"
+                        onClick={() => void handleTranscribeWithWhisper()}
+                        disabled={isTranscribing}
+                        className="underline font-bold text-rose-200 hover:text-white cursor-pointer disabled:opacity-50"
+                      >
+                        Try again
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setWhisperError(null)}
+                      aria-label="Dismiss message"
+                      className="text-rose-300 hover:text-rose-100 cursor-pointer font-bold text-xs"
+                    >
+                      ✕
+                    </button>
+                  </span>
                 </div>
               )}
 
@@ -703,6 +750,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                   <button
                     type="button"
                     onClick={() => setWhisperSuccess(null)}
+                    aria-label="Dismiss message"
                     className="text-emerald-400 hover:text-emerald-200 cursor-pointer font-bold text-xs"
                   >
                     ✕
@@ -714,13 +762,14 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
               <div className="p-4 rounded-xl bg-black/40 border border-white/10 space-y-3.5">
                 {/* Provider Selector */}
                 <div>
-                  <label className="text-[11px] font-semibold text-slate-300 block mb-1.5">
-                    Whisper AI Engine:
+                  <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+                    How to create captions:
                   </label>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     <button
                       type="button"
                       onClick={() => setWhisperProvider('local')}
+                      aria-pressed={whisperProvider === 'local'}
                       className={`p-2.5 rounded-lg border text-left cursor-pointer transition-all ${
                         whisperProvider === 'local'
                           ? 'bg-emerald-500/15 border-emerald-500/50 text-white shadow-sm shadow-emerald-500/20'
@@ -728,19 +777,20 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                       }`}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-emerald-300">Local Whisper</span>
-                        <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 font-bold">
-                          Zero Key
+                        <span className="text-xs font-bold text-emerald-300">On this device</span>
+                        <span className="text-xs px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-300 font-bold">
+                          No key needed
                         </span>
                       </div>
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        Runs in your browser · audio stays on device (~40 MB model download once)
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Private: audio stays on your device. First use downloads about 40 MB once.
                       </p>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setWhisperProvider('groq')}
+                      aria-pressed={whisperProvider === 'groq'}
                       className={`p-2.5 rounded-lg border text-left cursor-pointer transition-all ${
                         whisperProvider === 'groq'
                           ? 'bg-amber-500/15 border-amber-500/50 text-white'
@@ -748,17 +798,18 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                       }`}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-amber-300">Groq Whisper</span>
-                        <span className="text-[9px] text-amber-400/80 font-mono">Ultra-Fast</span>
+                        <span className="text-xs font-bold text-amber-300">Groq</span>
+                        <span className="text-xs text-amber-400/80 font-mono">Ultra-Fast</span>
                       </div>
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        whisper-large-v3-turbo · Free tier key
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Very fast · needs a free Groq key
                       </p>
                     </button>
 
                     <button
                       type="button"
                       onClick={() => setWhisperProvider('openai')}
+                      aria-pressed={whisperProvider === 'openai'}
                       className={`p-2.5 rounded-lg border text-left cursor-pointer transition-all ${
                         whisperProvider === 'openai'
                           ? 'bg-indigo-500/15 border-indigo-500/50 text-white'
@@ -766,11 +817,11 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                       }`}
                     >
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-indigo-300">OpenAI Whisper</span>
-                        <span className="text-[9px] text-indigo-400/80 font-mono">Cloud</span>
+                        <span className="text-xs font-bold text-indigo-300">OpenAI</span>
+                        <span className="text-xs text-indigo-400/80 font-mono">Cloud</span>
                       </div>
-                      <p className="text-[10px] text-slate-400 mt-0.5">
-                        whisper-1 · OpenAI API credits
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Cloud · needs an OpenAI key (paid)
                       </p>
                     </button>
                   </div>
@@ -782,11 +833,11 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                     <div className="flex items-center justify-between flex-wrap gap-2">
                       <div className="flex items-center gap-1.5 text-xs font-semibold text-emerald-300">
                         <Check className="w-3.5 h-3.5" />
-                        <span>Zero API Key Required (Runs via WebAssembly ONNX)</span>
+                        <span>No API key needed. Runs in your browser.</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <label htmlFor="select-local-whisper-model" className="text-[10px] text-slate-400">
-                          Neural Model:
+                        <label htmlFor="select-local-whisper-model" className="text-xs text-slate-400">
+                          Language model:
                         </label>
                         <select
                           id="select-local-whisper-model"
@@ -794,40 +845,32 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                           onChange={(e: any) => setLocalWhisperModel(e.target.value)}
                           className="bg-black/60 border border-white/10 rounded-lg px-2 py-0.5 text-xs text-emerald-300 focus:outline-none"
                         >
-                          <option value="Xenova/whisper-tiny.en">whisper-tiny.en (English, ~39MB Fast)</option>
-                          <option value="Xenova/whisper-tiny">whisper-tiny (Multilingual, ~39MB)</option>
+                          <option value="Xenova/whisper-tiny.en">English only (~39 MB, fastest)</option>
+                          <option value="Xenova/whisper-tiny">Multiple languages (~39 MB)</option>
                         </select>
                       </div>
                     </div>
-                    <p className="text-[10px] text-slate-400 leading-relaxed">
-                      Audio is processed directly inside your browser using client-side WebAssembly. Zero data leaves your computer.
-                      Once loaded, models are saved in browser cache for instantaneous re-use.
+                    <p className="text-xs text-slate-400 leading-relaxed">
+                      Your audio is processed inside your browser and never leaves your computer. After the first download the model is saved for quick reuse.
                     </p>
 
-                    {/* Progress Bar when transcribing */}
+                    {/* Progress when transcribing */}
                     {localWhisperProgress && (
-                      <div className="p-2.5 rounded-lg bg-black/60 border border-emerald-500/30 space-y-1.5 animate-fadeIn">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="text-emerald-300 font-semibold flex items-center gap-1.5">
-                            <span className="w-2.5 h-2.5 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
-                            {localWhisperProgress.status}
-                          </span>
-                          <span className="text-emerald-400 font-mono">{localWhisperProgress.progress ?? 0}%</span>
-                        </div>
-                        <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
-                          <div
-                            className="bg-gradient-to-r from-emerald-500 to-amber-500 h-full transition-all duration-300"
-                            style={{ width: `${Math.min(100, Math.max(5, localWhisperProgress.progress ?? 5))}%` }}
-                          />
-                        </div>
-                      </div>
+                      <ProgressBar
+                        className="p-2.5 rounded-lg bg-black/60 border border-emerald-500/30 animate-fadeIn"
+                        label={localWhisperProgress.status}
+                        value={typeof localWhisperProgress.progress === 'number' ? localWhisperProgress.progress / 100 : null}
+                        detail="The first time, a speech model (about 40 MB) is downloaded and saved in your browser. Later runs are faster."
+                        onCancel={() => abortRef.current?.abort()}
+                        cancelLabel="Cancel"
+                      />
                     )}
                   </div>
                 ) : (
                   /* Cloud API Key Input for Groq / OpenAI */
                   <div className="space-y-1">
                     <div className="flex items-center justify-between">
-                      <label htmlFor="input-whisper-api-key" className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
+                      <label htmlFor="input-whisper-api-key" className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                         <Key className="w-3.5 h-3.5 text-amber-400" />
                         <span>{whisperProvider === 'groq' ? 'Groq' : 'OpenAI'} API Key:</span>
                       </label>
@@ -835,7 +878,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                         href={whisperProvider === 'groq' ? 'https://console.groq.com/keys' : 'https://platform.openai.com/api-keys'}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-[10px] text-amber-400 hover:text-amber-300 flex items-center gap-1"
+                        className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1"
                       >
                         <span>Get Free API Key</span>
                         <ExternalLink className="w-3 h-3" />
@@ -849,7 +892,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                       placeholder={whisperProvider === 'groq' ? 'gsk_...' : 'sk-...'}
                       className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 font-mono"
                     />
-                    <p className="text-[10px] text-slate-500">
+                    <p className="text-xs text-slate-400">
                       Stored in this browser only. When you transcribe, the key and your audio are sent
                       directly to {whisperProvider === 'groq' ? 'Groq' : 'OpenAI'}, not to ClipDesk.
                     </p>
@@ -859,7 +902,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                 {/* Audio Language & Transcribe Trigger Button */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
                   <div className="flex items-center gap-2">
-                    <label htmlFor="select-whisper-lang" className="text-[11px] text-slate-400">
+                    <label htmlFor="select-whisper-lang" className="text-xs text-slate-400">
                       Spoken Language:
                     </label>
                     <select
@@ -894,15 +937,15 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                     {isTranscribing ? (
                       <>
                         <span className="w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                        <span>Transcribing Clip...</span>
+                        <span>Creating captions...</span>
                       </>
                     ) : (
                       <>
                         <Zap className="w-3.5 h-3.5 fill-black" />
                         <span>
                           {whisperProvider === 'local'
-                            ? 'Transcribe Locally (Whisper.wasm)'
-                            : 'Transcribe Video Audio'}
+                            ? 'Create captions on this device'
+                            : 'Create captions'}
                         </span>
                       </>
                     )}
@@ -920,7 +963,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
               {/* Quick Add Bar */}
               <form onSubmit={handleAddTypedLine} className="space-y-2 bg-black/40 p-3 rounded-xl border border-white/5">
                 <div className="flex items-center justify-between flex-wrap gap-2">
-                  <span className="text-[11px] font-semibold text-slate-300 flex items-center gap-1.5">
+                  <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                     <Edit3 className="w-3.5 h-3.5 text-indigo-400" />
                     <span>Type Caption Line</span>
                   </span>
@@ -936,7 +979,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="text-[11px] text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer"
+                      className="text-xs text-amber-400 hover:text-amber-300 flex items-center gap-1 cursor-pointer"
                       title="Import external .SRT or .VTT subtitles"
                     >
                       <Upload className="w-3 h-3" />
@@ -947,7 +990,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                       <button
                         type="button"
                         onClick={handleExportSrt}
-                        className="text-[11px] text-emerald-400 hover:text-emerald-300 flex items-center gap-1 cursor-pointer"
+                        className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1 cursor-pointer"
                         title="Download captions as standard .SRT file"
                       >
                         <Download className="w-3 h-3" />
@@ -958,7 +1001,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsScriptModalOpen(!isScriptModalOpen)}
-                      className="text-[11px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 cursor-pointer"
+                      className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 cursor-pointer"
                     >
                       <FileText className="w-3 h-3" />
                       <span>{isScriptModalOpen ? 'Hide Script Box' : 'Full Script Box'}</span>
@@ -969,6 +1012,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                 <div className="flex flex-col sm:flex-row gap-2">
                   <input
                     id="input-type-caption-text"
+                    aria-label="Caption text"
                     type="text"
                     value={newText}
                     onChange={(e) => setNewText(e.target.value)}
@@ -977,10 +1021,11 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                   />
 
                   <div className="flex items-center gap-1.5">
-                    <div className="flex items-center gap-1 bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-[11px] text-slate-300">
-                      <span className="text-slate-500 text-[10px]">Start:</span>
+                    <div className="flex items-center gap-1 bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-xs text-slate-300">
+                      <span className="text-slate-400 text-xs">Start:</span>
                       <input
                         type="number"
+                        aria-label="Caption start time in seconds"
                         step="0.1"
                         min="0"
                         max={durationSeconds}
@@ -988,13 +1033,14 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                         onChange={(e) => setNewStartSec(parseFloat(e.target.value) || 0)}
                         className="w-12 bg-transparent text-amber-400 font-mono text-center focus:outline-none"
                       />
-                      <span className="text-slate-500 text-[10px]">s</span>
+                      <span className="text-slate-400 text-xs">s</span>
                     </div>
 
-                    <div className="flex items-center gap-1 bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-[11px] text-slate-300">
-                      <span className="text-slate-500 text-[10px]">End:</span>
+                    <div className="flex items-center gap-1 bg-black/60 border border-white/10 rounded-lg px-2 py-1 text-xs text-slate-300">
+                      <span className="text-slate-400 text-xs">End:</span>
                       <input
                         type="number"
+                        aria-label="Caption end time in seconds"
                         step="0.1"
                         min="0.1"
                         max={durationSeconds}
@@ -1002,7 +1048,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                         onChange={(e) => setNewEndSec(parseFloat(e.target.value) || 0)}
                         className="w-12 bg-transparent text-amber-400 font-mono text-center focus:outline-none"
                       />
-                      <span className="text-slate-500 text-[10px]">s</span>
+                      <span className="text-slate-400 text-xs">s</span>
                     </div>
 
                     <button
@@ -1026,7 +1072,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                       <FileText className="w-3.5 h-3.5 text-indigo-400" />
                       <span>Type or Paste Complete Script</span>
                     </span>
-                    <span className="text-[10px] text-slate-400">
+                    <span className="text-xs text-slate-400">
                       Evenly timed across {durationSeconds.toFixed(1)}s clip
                     </span>
                   </div>
@@ -1044,7 +1090,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                     <button
                       type="button"
                       onClick={() => setTypedScript('')}
-                      className="text-[11px] text-slate-400 hover:text-white cursor-pointer"
+                      className="text-xs text-slate-400 hover:text-white cursor-pointer"
                     >
                       Clear
                     </button>
@@ -1066,7 +1112,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
               {/* Subtitle Segments List */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-semibold text-slate-300">
+                  <span className="text-xs font-semibold text-slate-300">
                     Captions Transcript ({segments.length} segments)
                   </span>
 
@@ -1075,16 +1121,16 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                       <button
                         type="button"
                         onClick={handleGenerateSmartDefaults}
-                        className="flex items-center gap-1 text-[11px] text-amber-400 hover:text-amber-300 cursor-pointer"
+                        className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 cursor-pointer"
                       >
                         <Sparkles className="w-3 h-3" />
-                        <span>Insert Placeholder Outline</span>
+                        <span>Insert sample lines</span>
                       </button>
                     ) : (
                       <button
                         type="button"
-                        onClick={handleClearAll}
-                        className="text-[11px] text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+                        onClick={() => setConfirmClear(true)}
+                        className="text-xs text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
                       >
                         Clear All
                       </button>
@@ -1094,14 +1140,14 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
 
                 <div className="max-h-56 overflow-y-auto space-y-1.5 pr-1">
                   {segments.length === 0 ? (
-                    <div className="p-4 rounded-xl bg-black/30 border border-dashed border-white/10 text-center text-xs text-slate-500">
+                    <div className="p-4 rounded-xl bg-black/30 border border-dashed border-white/10 text-center text-xs text-slate-400">
                       No captions added yet.{' '}
                       <button
                         type="button"
                         onClick={handleGenerateSmartDefaults}
                         className="text-amber-400 underline cursor-pointer hover:text-amber-300"
                       >
-                        Insert placeholder outline lines
+                        Insert sample lines
                       </button>{' '}
                       or type above.
                     </div>
@@ -1117,7 +1163,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                             type="button"
                             onClick={() => onSeek?.(seg.startSec)}
                             title={`Jump video to ${seg.startSec.toFixed(1)}s`}
-                            className="font-mono text-[10px] text-amber-400 hover:text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 shrink-0 cursor-pointer"
+                            className="font-mono text-xs text-amber-400 hover:text-amber-300 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 shrink-0 cursor-pointer"
                           >
                             {seg.startSec.toFixed(1)}s - {seg.endSec.toFixed(1)}s
                           </button>
@@ -1152,6 +1198,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                               onClick={() => handleSaveEdit(seg.id)}
                               className="p-1 text-emerald-400 hover:text-emerald-300 cursor-pointer"
                               title="Save changes"
+                              aria-label="Save changes"
                             >
                               <Check className="w-3.5 h-3.5" />
                             </button>
@@ -1161,6 +1208,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                               onClick={() => handleStartEdit(seg)}
                               className="p-1 text-slate-400 hover:text-white cursor-pointer"
                               title="Edit caption"
+                              aria-label="Edit caption"
                             >
                               <Edit3 className="w-3.5 h-3.5" />
                             </button>
@@ -1169,8 +1217,9 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                           <button
                             type="button"
                             onClick={() => handleDuplicateSegment(seg)}
-                            className="p-1 text-slate-500 hover:text-indigo-400 cursor-pointer"
+                            className="p-1 text-slate-400 hover:text-indigo-400 cursor-pointer"
                             title="Duplicate line"
+                            aria-label="Duplicate line"
                           >
                             <Plus className="w-3.5 h-3.5" />
                           </button>
@@ -1178,8 +1227,9 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                           <button
                             type="button"
                             onClick={() => handleDeleteSegment(seg.id)}
-                            className="p-1 text-slate-500 hover:text-rose-400 cursor-pointer"
+                            className="p-1 text-slate-400 hover:text-rose-400 cursor-pointer"
                             title="Delete caption"
+                            aria-label="Delete caption"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1206,13 +1256,13 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                     }`}
                   />
                   <span className="text-xs font-semibold text-white">
-                    {isSpeechSupported ? 'Web Speech API Available' : 'Web Speech API Not Available'}
+                    {isSpeechSupported ? 'Voice dictation available' : 'Voice dictation not available'}
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-400">
+                <span className="text-xs text-slate-400">
                   {isSpeechSupported
                     ? 'Uses your browser\'s speech service (Chrome sends audio to Google)'
-                    : 'Please type manually'}
+                    : 'Type captions instead'}
                 </span>
               </div>
 
@@ -1228,7 +1278,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
               {/* Dictation Control Card */}
               <div className="p-4 rounded-xl bg-gradient-to-b from-black/60 to-black/30 border border-amber-500/20 text-center space-y-3">
                 <div className="flex items-center justify-center gap-2">
-                  <label htmlFor="select-speech-lang" className="text-[11px] text-slate-400">
+                  <label htmlFor="select-speech-lang" className="text-xs text-slate-400">
                     Dictation Language:
                   </label>
                   <select
@@ -1252,6 +1302,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                     id="btn-voice-dictation"
                     type="button"
                     onClick={isListening ? handleStopSpeech : handleStartSpeech}
+                    aria-label={isListening ? 'Stop voice dictation' : 'Start voice dictation'}
                     className={`relative p-5 rounded-full transition-all cursor-pointer ${
                       isListening
                         ? 'bg-rose-500 text-white shadow-2xl shadow-rose-500/50 scale-105 animate-pulse'
@@ -1269,7 +1320,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                     <span className="text-xs font-bold text-white block">
                       {isListening ? 'Listening to Microphone...' : 'Start Voice Dictation'}
                     </span>
-                    <span className="text-[10px] text-slate-400">
+                    <span className="text-xs text-slate-400">
                       {isListening ? 'Click button to stop dictation' : 'Click mic and speak clearly'}
                     </span>
                   </div>
@@ -1278,9 +1329,9 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                 {/* Interim Live Transcript */}
                 {isListening && (
                   <div className="p-3 rounded-lg bg-black/70 border border-amber-500/40 text-left animate-fadeIn">
-                    <div className="text-[10px] font-mono text-amber-400 flex items-center gap-1.5 mb-1">
+                    <div className="text-xs font-mono text-amber-400 flex items-center gap-1.5 mb-1">
                       <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
-                      <span>Live Speech Transcript:</span>
+                      <span>What we hear:</span>
                     </div>
                     <div className="text-xs text-white italic min-h-[20px]">
                       {interimText || 'Listening for speech input...'}
@@ -1325,9 +1376,9 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-white flex items-center gap-1.5">
                     <MoveVertical className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Caption Location (Position)</span>
+                    <span>Caption position</span>
                   </span>
-                  <span className="text-[11px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                  <span className="text-xs font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
                     {Math.round(settings.positionYRatio * 100)}% Y-Axis
                   </span>
                 </div>
@@ -1346,14 +1397,15 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                         key={presetKey}
                         type="button"
                         onClick={() => handleSelectPositionPreset(presetKey)}
+                        aria-pressed={isSelected}
                         className={`p-2 rounded-lg border text-center transition-all cursor-pointer ${
                           isSelected
                             ? 'bg-amber-500/20 border-amber-500 text-white font-bold shadow-md'
                             : 'bg-black/30 border-white/5 text-slate-400 hover:text-white hover:bg-white/5'
                         }`}
                       >
-                        <div className="text-[11px]">{preset.name}</div>
-                        <div className="text-[9px] text-slate-500 mt-0.5">{Math.round(preset.ratio * 100)}%</div>
+                        <div className="text-xs">{preset.name}</div>
+                        <div className="text-xs text-slate-400 mt-0.5">{Math.round(preset.ratio * 100)}%</div>
                       </button>
                     );
                   })}
@@ -1361,13 +1413,14 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
 
                 {/* Fine-tune Location Slider */}
                 <div className="space-y-1 pt-1">
-                  <div className="flex items-center justify-between text-[10px] text-slate-400">
+                  <div className="flex items-center justify-between text-xs text-slate-400">
                     <span>Top (10%)</span>
-                    <span>Safe Center (50%)</span>
+                    <span>Middle (50%)</span>
                     <span>Bottom (90%)</span>
                   </div>
                   <input
                     id="slider-caption-location"
+                    aria-label="Caption vertical position"
                     type="range"
                     min="0.10"
                     max="0.90"
@@ -1380,7 +1433,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
 
                 {/* Alignment */}
                 <div className="flex items-center justify-between pt-1 border-t border-white/5">
-                  <span className="text-[11px] text-slate-400">Text Alignment:</span>
+                  <span className="text-xs text-slate-400">Text Alignment:</span>
                   <div className="flex items-center gap-1 bg-black/60 p-0.5 rounded-lg border border-white/10">
                     {(['left', 'center', 'right'] as CaptionAlignment[]).map((align) => {
                       const isSelected = settings.alignment === align;
@@ -1395,6 +1448,8 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                               : 'text-slate-400 hover:text-white'
                           }`}
                           title={`Align ${align}`}
+                          aria-label={`Align ${align}`}
+                          aria-pressed={isSelected}
                         >
                           {align === 'left' && <AlignLeft className="w-3.5 h-3.5" />}
                           {align === 'center' && <AlignCenter className="w-3.5 h-3.5" />}
@@ -1411,9 +1466,9 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-white flex items-center gap-1.5">
                     <Sliders className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Caption Size (Font Scale)</span>
+                    <span>Caption size</span>
                   </span>
-                  <span className="text-[11px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                  <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
                     {Math.round(settings.fontSize)}px
                   </span>
                 </div>
@@ -1432,14 +1487,15 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                         key={sizeKey}
                         type="button"
                         onClick={() => handleSelectSizePreset(sizeKey)}
+                        aria-pressed={isSelected}
                         className={`p-2 rounded-lg border text-center transition-all cursor-pointer ${
                           isSelected
                             ? 'bg-emerald-500/20 border-emerald-500 text-white font-bold shadow-md'
                             : 'bg-black/30 border-white/5 text-slate-400 hover:text-white hover:bg-white/5'
                         }`}
                       >
-                        <div className="text-[11px]">{preset.name}</div>
-                        <div className="text-[9px] text-slate-500 mt-0.5">{preset.label}</div>
+                        <div className="text-xs">{preset.name}</div>
+                        <div className="text-xs text-slate-400 mt-0.5">{preset.label}</div>
                       </button>
                     );
                   })}
@@ -1447,13 +1503,14 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
 
                 {/* Fine-tune Font Size Slider */}
                 <div className="space-y-1 pt-1">
-                  <div className="flex items-center justify-between text-[10px] text-slate-400">
+                  <div className="flex items-center justify-between text-xs text-slate-400">
                     <span>Compact (28px)</span>
                     <span>Standard (50px)</span>
                     <span>Heroic (84px)</span>
                   </div>
                   <input
                     id="slider-caption-size"
+                    aria-label="Caption font size"
                     type="range"
                     min="28"
                     max="84"
@@ -1470,11 +1527,11 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-white flex items-center gap-1.5">
                     <Palette className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>Caption Background & Box Styling</span>
+                    <span>Caption background</span>
                   </span>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] text-slate-400">Opacity:</span>
-                    <span className="text-[11px] font-mono text-indigo-400">
+                    <span className="text-xs text-slate-400">Opacity:</span>
+                    <span className="text-xs font-mono text-indigo-400">
                       {Math.round(settings.bgOpacity * 100)}%
                     </span>
                   </div>
@@ -1490,6 +1547,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                         key={bgKey}
                         type="button"
                         onClick={() => handleSelectBgPreset(bgKey)}
+                        aria-pressed={isSelected}
                         className={`flex items-center gap-2 p-2 rounded-lg border text-left transition-all cursor-pointer ${
                           isSelected
                             ? 'bg-white/15 border-white text-white font-bold shadow-md'
@@ -1503,7 +1561,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                             boxShadow: preset.color === 'transparent' ? 'none' : '0 0 8px ' + preset.color
                           }}
                         />
-                        <span className="text-[10px] truncate">{preset.name}</span>
+                        <span className="text-xs truncate">{preset.name}</span>
                       </button>
                     );
                   })}
@@ -1512,10 +1570,11 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                 {/* Custom Color & Opacity Sliders */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-white/5">
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400 shrink-0">Custom Color:</span>
+                    <span className="text-xs text-slate-400 shrink-0">Custom Color:</span>
                     <div className="flex items-center gap-2 flex-1">
                       <input
                         type="color"
+                        aria-label="Caption background color"
                         value={settings.bgColor.startsWith('#') ? settings.bgColor : '#18181b'}
                         onChange={(e) =>
                           updateSettings({
@@ -1525,16 +1584,17 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                         }
                         className="w-7 h-7 rounded-lg border border-white/20 cursor-pointer bg-transparent"
                       />
-                      <span className="font-mono text-[10px] text-slate-400">
+                      <span className="font-mono text-xs text-slate-400">
                         {settings.bgColor}
                       </span>
                     </div>
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400 shrink-0">Box Opacity:</span>
+                    <span className="text-xs text-slate-400 shrink-0">Box Opacity:</span>
                     <input
                       type="range"
+                      aria-label="Caption box opacity"
                       min="0"
                       max="1"
                       step="0.05"
@@ -1548,8 +1608,8 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                 {/* Corner Radius & Border Controls */}
                 <div className="flex items-center justify-between pt-1 border-t border-white/5">
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-slate-400">Pill Shape:</span>
-                    <div className="flex gap-1 text-[10px]">
+                    <span className="text-xs text-slate-400">Corner shape:</span>
+                    <div className="flex gap-1 text-xs">
                       {[
                         { label: 'Pill', radius: 14 },
                         { label: 'Box', radius: 8 },
@@ -1571,7 +1631,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                     </div>
                   </div>
 
-                  <label className="flex items-center gap-1.5 text-[11px] text-slate-400 cursor-pointer">
+                  <label className="flex items-center gap-1.5 text-xs text-slate-400 cursor-pointer">
                     <input
                       type="checkbox"
                       checked={settings.hasBorder}
@@ -1585,7 +1645,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
 
               {/* 4. VISUAL THEME SELECTION */}
               <div>
-                <div className="text-[11px] font-semibold text-slate-300 mb-2">Typography & Animation Theme</div>
+                <div className="text-xs font-semibold text-slate-300 mb-2">Caption look</div>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {Object.values(CAPTION_STYLES).map((s) => {
                     const isSelected = styleId === s.id;
@@ -1594,6 +1654,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                         key={s.id}
                         type="button"
                         onClick={() => onSelectStyle(s.id)}
+                        aria-pressed={isSelected}
                         className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
                           isSelected
                             ? 'bg-amber-500/20 border-amber-500 text-white shadow-md'
@@ -1601,7 +1662,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                         }`}
                       >
                         <div className="text-xs font-bold">{s.name}</div>
-                        <div className="text-[10px] text-slate-400 mt-1 line-clamp-1">{s.description}</div>
+                        <div className="text-xs text-slate-400 mt-1 line-clamp-1">{s.description}</div>
                       </button>
                     );
                   })}
@@ -1611,6 +1672,35 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
           )}
         </div>
       )}
+
+      {undoState && (
+        <div
+          role="status"
+          className="flex items-center justify-between gap-3 p-2.5 rounded-xl bg-slate-800 border border-white/15 text-xs text-white"
+        >
+          <span>{undoState.label}</span>
+          <button
+            type="button"
+            onClick={handleUndo}
+            className="font-bold text-amber-300 hover:text-amber-200 underline cursor-pointer"
+          >
+            Undo
+          </button>
+        </div>
+      )}
+
+      <ConfirmDialog
+        isOpen={confirmClear}
+        title="Clear all captions?"
+        message={`This removes all ${segments.length} caption lines. You can undo it right after.`}
+        confirmLabel="Clear all"
+        danger
+        onCancel={() => setConfirmClear(false)}
+        onConfirm={() => {
+          setConfirmClear(false);
+          handleClearAll();
+        }}
+      />
     </div>
   );
 };

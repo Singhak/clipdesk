@@ -33,7 +33,7 @@ export const FramingOverlay: React.FC<FramingOverlayProps> = ({
       onClick={onCancel}
       className="absolute top-6 right-6 flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-xs font-semibold text-slate-300 hover:text-white transition-all cursor-pointer"
     >
-      <X className="w-4 h-4" />
+      <X className="w-4 h-4" aria-hidden="true" />
       <span>Cancel</span>
     </button>
 
@@ -92,7 +92,7 @@ export const FramingOverlay: React.FC<FramingOverlayProps> = ({
 
       {usesFocus && <FocusPicker stream={stream} focus={focus} onChange={onFocusChange} />}
 
-      <p className="text-[11px] text-slate-500 text-center">
+      <p className="text-xs text-slate-500 text-center">
         Tip: share a single window or tab for the clearest framing. You can still move the frame while recording.
       </p>
 

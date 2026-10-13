@@ -45,7 +45,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
         {/* Badge */}
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/5 border border-white/10 text-indigo-300 text-xs font-semibold mb-5 shadow-inner backdrop-blur-md">
           <Zap className="w-3.5 h-3.5 text-indigo-400 fill-indigo-400" />
-          <span>"OBS for Reels" • Zero Editing Required • Studio Presets</span>
+          <span>Record your screen as a Reel • No editing needed • Ready-made styles</span>
         </div>
 
         {/* Headline */}
@@ -112,7 +112,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
               href="https://github.com/singhak/clipdesk/releases"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-[11px] font-semibold text-white border border-white/10 transition-colors"
+              className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-semibold text-white border border-white/10 transition-colors"
             >
               Get Desktop App
             </a>
@@ -132,7 +132,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             </p>
           </div>
           <span className="text-xs font-mono text-indigo-400 bg-indigo-500/10 px-3 py-1 rounded-lg border border-indigo-500/20">
-            5 Presets Available
+            5 styles available
           </span>
         </div>
 
@@ -154,10 +154,10 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                   <span className="w-2 h-2 rounded-full bg-rose-500" />
                   <span className="w-2 h-2 rounded-full bg-amber-500" />
                   <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                  <span className="text-[10px] text-slate-500 font-mono ml-2">code.ts (Dynamic Crop)</span>
+                  <span className="text-xs text-slate-500 font-mono ml-2">code.ts (Dynamic Crop)</span>
                 </div>
                 {/* Simulated code syntax */}
-                <div className="space-y-1 text-[9px] font-mono opacity-80">
+                <div className="space-y-1 text-xs font-mono opacity-80">
                   <div className="text-purple-400">const reel = create916Crop();</div>
                   <div className="text-indigo-400 flex items-center gap-1">
                     <span>camera.trackCursor(60fps);</span>
@@ -186,7 +186,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 </div>
 
                 {selectedTemplate === 'coding' && (
-                  <span className="flex items-center gap-1 text-[11px] font-bold text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded-full border border-indigo-500/40">
+                  <span className="flex items-center gap-1 text-xs font-bold text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded-full border border-indigo-500/40">
                     <Check className="w-3 h-3 text-indigo-400" />
                     Selected
                   </span>
@@ -199,7 +199,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             </div>
 
             {/* Badges Footer */}
-            <div className="pt-3.5 border-t border-white/5 flex flex-wrap gap-2 text-[10px] font-mono text-slate-400">
+            <div className="pt-3.5 border-t border-white/5 flex flex-wrap gap-2 text-xs font-mono text-slate-400">
               <span className="bg-black/50 px-2 py-1 rounded-md border border-white/5 text-indigo-300">
                 Zoom: 1.35x
               </span>
@@ -251,7 +251,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 </div>
 
                 {selectedTemplate === 'product_demo' && (
-                  <span className="flex items-center gap-1 text-[11px] font-bold text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded-full border border-indigo-500/40">
+                  <span className="flex items-center gap-1 text-xs font-bold text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded-full border border-indigo-500/40">
                     <Check className="w-3 h-3 text-indigo-400" />
                     Selected
                   </span>
@@ -264,7 +264,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             </div>
 
             {/* Badges Footer */}
-            <div className="pt-3.5 border-t border-white/5 flex flex-wrap gap-2 text-[10px] font-mono text-slate-400">
+            <div className="pt-3.5 border-t border-white/5 flex flex-wrap gap-2 text-xs font-mono text-slate-400">
               <span className="bg-black/50 px-2 py-1 rounded-md border border-white/5 text-pink-300">
                 Zoom: 1.15x
               </span>
@@ -290,7 +290,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
               <div className="h-24 w-full rounded-xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-white/10 p-3 mb-5 overflow-hidden relative shadow-inner flex items-center justify-center">
                 {/* Glowing border slide */}
                 <div className="w-36 h-16 rounded-lg bg-[#0d101d] border border-cyan-500/40 shadow-lg p-2.5 flex flex-col justify-between">
-                  <div className="text-[9px] font-bold text-cyan-300">Q3 Product Keynote</div>
+                  <div className="text-xs font-bold text-cyan-300">Q3 Product Keynote</div>
                   <div className="flex gap-1.5 items-end h-5">
                     <span className="w-4 h-2 bg-indigo-500 rounded-sm" />
                     <span className="w-4 h-3.5 bg-cyan-400 rounded-sm" />
@@ -314,7 +314,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 </div>
 
                 {selectedTemplate === 'presentation' && (
-                  <span className="flex items-center gap-1 text-[11px] font-bold text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded-full border border-indigo-500/40">
+                  <span className="flex items-center gap-1 text-xs font-bold text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded-full border border-indigo-500/40">
                     <Check className="w-3 h-3 text-indigo-400" />
                     Selected
                   </span>
@@ -327,7 +327,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             </div>
 
             {/* Badges Footer */}
-            <div className="pt-3.5 border-t border-white/5 flex flex-wrap gap-2 text-[10px] font-mono text-slate-400">
+            <div className="pt-3.5 border-t border-white/5 flex flex-wrap gap-2 text-xs font-mono text-slate-400">
               <span className="bg-black/50 px-2 py-1 rounded-md border border-white/5 text-cyan-300">
                 Zoom: 1.00x
               </span>
@@ -354,7 +354,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 {/* Address bar */}
                 <div className="h-5 rounded-md bg-white/5 border border-white/5 flex items-center px-2 gap-1.5 mb-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  <span className="text-[9px] text-slate-400 font-mono">https://yourapp.io/dashboard</span>
+                  <span className="text-xs text-slate-400 font-mono">https://yourapp.io/dashboard</span>
                 </div>
                 {/* Content mockup */}
                 <div className="grid grid-cols-2 gap-1.5">
@@ -384,7 +384,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 </div>
 
                 {selectedTemplate === 'browser' && (
-                  <span className="flex items-center gap-1 text-[11px] font-bold text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded-full border border-indigo-500/40">
+                  <span className="flex items-center gap-1 text-xs font-bold text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded-full border border-indigo-500/40">
                     <Check className="w-3 h-3 text-indigo-400" />
                     Selected
                   </span>
@@ -397,7 +397,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             </div>
 
             {/* Badges Footer */}
-            <div className="pt-3.5 border-t border-white/5 flex flex-wrap gap-2 text-[10px] font-mono text-slate-400">
+            <div className="pt-3.5 border-t border-white/5 flex flex-wrap gap-2 text-xs font-mono text-slate-400">
               <span className="bg-black/50 px-2 py-1 rounded-md border border-white/5 text-blue-300">
                 Zoom: 1.25x
               </span>
@@ -427,7 +427,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             <div>
               {/* Preset Visual Header (Sliders Studio Mockup) */}
               <div className="h-24 w-full rounded-xl bg-[#090b14] border border-white/10 p-3 mb-5 overflow-hidden relative shadow-inner flex flex-col justify-center gap-2">
-                <div className="flex items-center justify-between text-[9px] font-mono text-slate-400">
+                <div className="flex items-center justify-between text-xs font-mono text-slate-400">
                   <span>Spring Damping: 0.14</span>
                   <span className="text-amber-400 font-bold">PRO</span>
                 </div>
@@ -457,12 +457,12 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 </div>
 
                 {selectedTemplate === 'custom' ? (
-                  <span className="flex items-center gap-1 text-[11px] font-bold text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded-full border border-indigo-500/40">
+                  <span className="flex items-center gap-1 text-xs font-bold text-indigo-300 bg-indigo-500/20 px-2 py-0.5 rounded-full border border-indigo-500/40">
                     <Check className="w-3 h-3 text-indigo-400" />
                     Selected
                   </span>
                 ) : !isPro ? (
-                  <span className="text-[10px] font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
+                  <span className="text-xs font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/30">
                     Unlock with Pro
                   </span>
                 ) : null}
@@ -474,12 +474,12 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             </div>
 
             {/* Badges Footer */}
-            <div className="pt-3.5 border-t border-white/5 flex flex-wrap gap-2 text-[10px] font-mono text-slate-400">
+            <div className="pt-3.5 border-t border-white/5 flex flex-wrap gap-2 text-xs font-mono text-slate-400">
               <span className="bg-black/50 px-2 py-1 rounded-md border border-white/5 text-amber-300">
                 Custom Zoom
               </span>
               <span className="bg-black/50 px-2 py-1 rounded-md border border-white/5 text-amber-300">
-                Custom Lerp
+                Custom smoothness
               </span>
               <span className="bg-black/50 px-2 py-1 rounded-md border border-white/5">
                 Multi-Layout
@@ -496,7 +496,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
               <div className="text-xs font-bold text-white">
                 Selected: <span className="text-indigo-400">{TEMPLATES[selectedTemplate].name}</span>
               </div>
-              <div className="text-[11px] text-slate-400">
+              <div className="text-xs text-slate-400">
                 Ready to configure inputs or jump directly to the live recording studio.
               </div>
             </div>

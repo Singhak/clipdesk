@@ -48,12 +48,12 @@ export const CutEditor: React.FC<CutEditorProps> = ({ video, duration, onChange 
       <div className="flex items-center gap-2">
         <Scissors className="w-4 h-4 text-indigo-400" />
         <span className="text-xs font-bold text-white">Cut &amp; Trim</span>
-        <span className="text-[10px] text-slate-400">
+        <span className="text-xs text-slate-400">
           Drag over any part, then Delete. Ctrl+Z undoes.
         </span>
       </div>
       <div ref={hostRef} />
-      {notice && <p className="text-[11px] text-amber-300">{notice}</p>}
+      {notice && <p className="text-xs text-amber-300">{notice}</p>}
     </div>
   );
 };
