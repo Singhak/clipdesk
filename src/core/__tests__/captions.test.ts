@@ -59,7 +59,7 @@ describe('parseSrtOrVtt', () => {
       '2',
       '00:00:02,000 --> 00:00:04,000',
       '<v Roger>Fish &amp; chips</v> <00:00:03.000><c.yellow>now</c>'
-    ].join('\n');
+    ].join('\r\n');
     const parsed = CaptionEngine.parseSrtOrVtt(srt);
     expect(parsed.map((s) => s.text)).toEqual(['Hello there', 'Fish & chips now']);
     expect(parsed[1].words.map((w) => w.word)).toEqual(['Fish', '&', 'chips', 'now']);

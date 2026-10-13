@@ -67,8 +67,20 @@ async function main(): Promise<void> {
       showMeta(lengthOf(kept));
       updateButtons();
     },
-    notify: (msg) => setProgress(msg)
+    notify: showNotice
   });
+
+  // Timeline notices (e.g. why a cut was refused) share the progress line and fade after a few
+  // seconds; they never replace the status of a running export
+  let noticeTimer = 0;
+  function showNotice(msg: string) {
+    if (busy) return;
+    setProgress(msg);
+    clearTimeout(noticeTimer);
+    noticeTimer = window.setTimeout(() => {
+      if (!busy && progressEl.textContent === msg) setProgress(null);
+    }, 4000);
+  }
   timeline.setDuration(duration);
   const isCut = () => timeline.cuts.length > 0;
 
@@ -109,7 +121,16 @@ async function main(): Promise<void> {
     if (!toggle.checked) return;
     CaptionEngine.renderCaptions(layerCtx, video.currentTime, segments, CAPTION_STYLES[styleId], layer.width, layer.height, settings);
   }
-  video.addEventListener('timeupdate', drawCaptions);
+  // Redraw on every video frame while playing; timeupdate (~4×/s) is too coarse for word highlights
+  let frameHandle = 0;
+  const onFrame = () => {
+    drawCaptions();
+    frameHandle = video.paused ? 0 : video.requestVideoFrameCallback(onFrame);
+  };
+  video.addEventListener('play', () => {
+    if (frameHandle) video.cancelVideoFrameCallback(frameHandle);
+    frameHandle = video.requestVideoFrameCallback(onFrame);
+  });
   video.addEventListener('seeked', drawCaptions);
   toggle.addEventListener('change', () => {
     drawCaptions();
