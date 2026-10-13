@@ -19,6 +19,10 @@ export interface DesktopConfig {
   systemAudio: boolean;
   zoomIntensity?: 'subtle' | 'deep' | 'ultra';
   noiseCancellation?: NoiseSuppressionMode;
+  /** 16:9 only: zoom in on clicks (reels always do) */
+  wideZoom?: boolean;
+  /** 16:9 only: cursor highlight and click ripples */
+  wideMouseFx?: boolean;
 }
 
 export const DEFAULT_DESKTOP_CONFIG: DesktopConfig = {
@@ -29,7 +33,9 @@ export const DEFAULT_DESKTOP_CONFIG: DesktopConfig = {
   mic: true,
   systemAudio: false,
   zoomIntensity: 'deep',
-  noiseCancellation: 'studio'
+  noiseCancellation: 'studio',
+  wideZoom: false,
+  wideMouseFx: true
 };
 
 export interface SourceInfo {

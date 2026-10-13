@@ -80,7 +80,10 @@ export class ReelCompositor {
   /** A click in source pixels: moves the cursor there, centers camera, and triggers snappy zoom */
   public click(x: number, y: number): void {
     this.cursor = { x, y };
-    if (!this.opts.smartFeatures.zoomOnClick) return;
+    if (!this.opts.smartFeatures.zoomOnClick) {
+      if (this.opts.smartFeatures.cursorHighlight) this.zoom.addHalo(x, y);
+      return;
+    }
     this.lastClick = { x, y };
     this.camera.focusPoint(x, y);
     this.zoom.registerClick(x, y);
@@ -113,7 +116,15 @@ export class ReelCompositor {
 
     const cursorX = smartFeatures.followMouse ? this.cursor.x : sw / 2;
     const cursorY = smartFeatures.followMouse ? this.cursor.y : sh / 2;
-    let camera: CameraState = this.camera.update(cursorX, cursorY, activeZoom, now);
+    let camera: CameraState;
+    if (layoutMode === 'widescreen') {
+      // Full screen at rest; a click punches in by the template's click/rest ratio, keeping 16:9
+      camera = smartFeatures.zoomOnClick
+        ? this.camera.update(cursorX, cursorY, activeZoom / template.defaultZoom, now, sw / sh)
+        : { cropX: 0, cropY: 0, cropWidth: sw, cropHeight: sh, zoom: 1, targetX: sw / 2, targetY: sh / 2 };
+    } else {
+      camera = this.camera.update(cursorX, cursorY, activeZoom, now);
+    }
 
     if (focus && layoutMode === 'dynamic_crop') {
       camera = { ...camera, ...this.focusCrop(focus, activeZoom, sw, sh) };

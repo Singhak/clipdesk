@@ -260,8 +260,8 @@ async function main(): Promise<void> {
     layoutMode: config.layout as LayoutMode,
     smartFeatures: {
       followMouse: true,
-      zoomOnClick: true,
-      cursorHighlight: template.showCursorHalo,
+      zoomOnClick: config.layout === 'widescreen' ? !!config.wideZoom : true,
+      cursorHighlight: config.layout === 'widescreen' ? !!config.wideMouseFx : template.showCursorHalo,
       blurSideAreas: true,
       smoothCameraDamping: true,
       zoomIntensity: config.zoomIntensity ?? 'deep'

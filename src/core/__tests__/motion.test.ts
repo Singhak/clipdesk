@@ -50,6 +50,15 @@ describe('CameraAgent', () => {
     expect(s.cropY).toBeGreaterThanOrEqual(0);
   });
 
+  it('shows the whole frame at rest for a widescreen crop and keeps 16:9 when zoomed', () => {
+    const cam = new CameraAgent({ sourceWidth: 1920, sourceHeight: 1080 });
+    const rest = cam.update(1700, 900, 1, 0, 1920 / 1080);
+    expect(rest).toMatchObject({ cropX: 0, cropY: 0, cropWidth: 1920, cropHeight: 1080 });
+    const zoomed = cam.update(1700, 900, 1.5, 16, 1920 / 1080);
+    expect(zoomed.cropHeight).toBe(720);
+    expect(zoomed.cropWidth).toBeCloseTo(1280);
+  });
+
   it('ignores cursor movement inside the dead zone', () => {
     const cam = new CameraAgent({ sourceWidth: 1920, sourceHeight: 1080 });
     const a = cam.update(960, 540, 1, 0);
@@ -88,5 +97,14 @@ describe('ZoomEngine', () => {
     z.registerClick(10, 20);
     expect(z.update(t0 + 10).halos).toHaveLength(1);
     expect(z.update(t0 + 1000).halos).toHaveLength(0);
+  });
+
+  it('adds a ripple without zooming in', () => {
+    const z = new ZoomEngine(1.4, 1.95);
+    const t0 = performance.now();
+    z.addHalo(10, 20);
+    const s = z.update(t0 + 300);
+    expect(s.halos).toHaveLength(1);
+    expect(s.zoom).toBeCloseTo(1.4);
   });
 });

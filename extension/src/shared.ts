@@ -11,6 +11,10 @@ export interface RecordingConfig {
   mic: boolean;
   /** Show the in-page floating bar (it is part of the page, so it can appear in the video) */
   showControls: boolean;
+  /** 16:9 only: zoom in on clicks (reels always do) */
+  wideZoom?: boolean;
+  /** 16:9 only: cursor highlight and click ripples */
+  wideMouseFx?: boolean;
 }
 
 export const DEFAULT_CONFIG: RecordingConfig = {
@@ -19,7 +23,9 @@ export const DEFAULT_CONFIG: RecordingConfig = {
   templateId: 'browser',
   camera: true,
   mic: true,
-  showControls: true
+  showControls: true,
+  wideZoom: false,
+  wideMouseFx: true
 };
 
 export type RecStatus = 'idle' | 'starting' | 'countdown' | 'recording' | 'paused' | 'saving';

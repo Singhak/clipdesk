@@ -47,8 +47,12 @@ export class ZoomEngine {
     const now = performance.now();
     // Retarget & extend: reset trigger time so consecutive clicks stay zoomed in seamlessly
     this.zoomTriggerTime = now;
+    this.addHalo(x, y, color);
+  }
 
-    // Add high-production ripple halo
+  /** A click ripple without zooming in */
+  public addHalo(x: number, y: number, color = 'rgba(99, 102, 241, 0.85)'): void {
+    const now = performance.now();
     this.activeHalos.push({
       id: Math.random().toString(36).substring(2, 9),
       x,

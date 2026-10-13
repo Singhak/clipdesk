@@ -254,7 +254,23 @@ const Launcher: React.FC = () => {
             </option>
           ))}
         </select>
-        {config.layout === 'dynamic_crop' && (
+        {config.layout === 'widescreen' && (
+          <div className="divide-y divide-white/5">
+            <Toggle
+              label="Zoom on clicks"
+              hint="Punches in where you click, then back to full screen"
+              checked={!!config.wideZoom}
+              onChange={(wideZoom) => update({ wideZoom })}
+            />
+            <Toggle
+              label="Mouse effects"
+              hint="Highlights the cursor and ripples on clicks"
+              checked={!!config.wideMouseFx}
+              onChange={(wideMouseFx) => update({ wideMouseFx })}
+            />
+          </div>
+        )}
+        {(config.layout === 'dynamic_crop' || (config.layout === 'widescreen' && config.wideZoom)) && (
           <div className="space-y-1.5 pt-1">
             <span className="block text-[11px] font-semibold text-slate-300">Click Zoom Intensity</span>
             <div className="grid grid-cols-3 gap-1.5">

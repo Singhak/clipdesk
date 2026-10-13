@@ -57,13 +57,13 @@ export class CameraAgent {
     this.clickFocusUntil = performance.now() + 400;
   }
 
-  public update(cursorX: number, cursorY: number, zoomLevel: number, now = performance.now()): CameraState {
+  /** `aspect` is the crop's width / height: 9:16 for reels, the source's own for a widescreen zoom */
+  public update(cursorX: number, cursorY: number, zoomLevel: number, now = performance.now(), aspect = 9 / 16): CameraState {
     const zoom = Math.max(1.0, zoomLevel);
 
-    // 9:16 aspect ratio: width = height * 9 / 16
     const baseHeight = this.sourceHeight;
     const cropHeight = baseHeight / zoom;
-    const cropWidth = (cropHeight * 9) / 16;
+    const cropWidth = Math.min(this.sourceWidth, cropHeight * aspect);
 
     const isClickFocusActive = now < this.clickFocusUntil;
 

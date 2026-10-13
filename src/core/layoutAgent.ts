@@ -60,13 +60,12 @@ export class LayoutAgent {
         LayoutAgent.renderBlurBackdrop(ctxObj);
     }
 
-    // Halos and cursor are mapped through the vertical camera crop, so they don't apply to widescreen
-    if (mode !== 'widescreen') {
+    // Widescreen keeps the plain pointer unless mouse effects are on; reels always show click ripples
+    if (mode !== 'widescreen' || ctxObj.showCursor) {
       LayoutAgent.renderHalos(ctxObj);
-
-      if (ctxObj.showCursor) {
-        LayoutAgent.renderCursor(ctxObj);
-      }
+    }
+    if (ctxObj.showCursor) {
+      LayoutAgent.renderCursor(ctxObj);
     }
 
     // Render Circular Webcam Bubble (PiP) if enabled
@@ -99,13 +98,44 @@ export class LayoutAgent {
 
   /** Loom-style: the whole screen, uncropped, letterboxed if the source aspect ratio differs. */
   private static renderWidescreen(o: RenderContext): void {
-    const { ctx, canvasWidth, canvasHeight, source, sourceWidth, sourceHeight } = o;
+    const { ctx, canvasWidth, canvasHeight, source, camera } = o;
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-    const scale = Math.min(canvasWidth / sourceWidth, canvasHeight / sourceHeight);
-    const w = sourceWidth * scale;
-    const h = sourceHeight * scale;
-    ctx.drawImage(source, 0, 0, sourceWidth, sourceHeight, (canvasWidth - w) / 2, (canvasHeight - h) / 2, w, h);
+    const { x, y, w, h } = LayoutAgent.widescreenRect(o);
+    ctx.drawImage(source, camera.cropX, camera.cropY, camera.cropWidth, camera.cropHeight, x, y, w, h);
+  }
+
+  /** Where the (possibly zoomed) widescreen crop lands on the canvas, letterboxed */
+  private static widescreenRect(o: RenderContext): { x: number; y: number; w: number; h: number } {
+    const { canvasWidth, canvasHeight, camera } = o;
+    const scale = Math.min(canvasWidth / camera.cropWidth, canvasHeight / camera.cropHeight);
+    const w = camera.cropWidth * scale;
+    const h = camera.cropHeight * scale;
+    return { x: (canvasWidth - w) / 2, y: (canvasHeight - h) / 2, w, h };
+  }
+
+  /** A source-pixel point in canvas coordinates for the current layout */
+  private static toCanvas(o: RenderContext, x: number, y: number): { x: number; y: number } {
+    const { canvasWidth, canvasHeight, camera, mode, sourceWidth, sourceHeight } = o;
+    if (mode === 'widescreen') {
+      const r = LayoutAgent.widescreenRect(o);
+      return { x: r.x + ((x - camera.cropX) / camera.cropWidth) * r.w, y: r.y + ((y - camera.cropY) / camera.cropHeight) * r.h };
+    }
+    if (mode === 'dynamic_crop') {
+      return {
+        x: (x - camera.cropX) * (canvasWidth / camera.cropWidth),
+        y: (y - camera.cropY) * (canvasHeight / camera.cropHeight)
+      };
+    }
+    const margin = mode === 'gradient_mesh' ? 20 : 16;
+    const { targetX, targetY, targetW, targetH } = LayoutAgent.calculateCardBounds(
+      canvasWidth,
+      canvasHeight,
+      sourceWidth,
+      sourceHeight,
+      margin
+    );
+    return { x: targetX + (x / sourceWidth) * targetW, y: targetY + (y / sourceHeight) * targetH };
   }
 
   private static renderDynamicCrop(o: RenderContext): void {
@@ -437,7 +467,7 @@ export class LayoutAgent {
   }
 
   private static renderHalos(o: RenderContext): void {
-    const { ctx, canvasWidth, canvasHeight, halos, camera, mode, sourceWidth, sourceHeight } = o;
+    const { ctx, halos } = o;
     const now = performance.now();
 
     for (const halo of halos) {
@@ -448,27 +478,7 @@ export class LayoutAgent {
       const currentRadius = halo.maxRadius * (0.3 + 0.7 * progress);
       const opacity = Math.max(0, 1 - progress);
 
-      // Map source coordinates to vertical canvas
-      let screenX = halo.x;
-      let screenY = halo.y;
-
-      if (mode === 'dynamic_crop') {
-        const scaleX = canvasWidth / camera.cropWidth;
-        const scaleY = canvasHeight / camera.cropHeight;
-        screenX = (halo.x - camera.cropX) * scaleX;
-        screenY = (halo.y - camera.cropY) * scaleY;
-      } else {
-        const margin = mode === 'gradient_mesh' ? 20 : 16;
-        const { targetX, targetY, targetW, targetH } = LayoutAgent.calculateCardBounds(
-          canvasWidth,
-          canvasHeight,
-          sourceWidth,
-          sourceHeight,
-          margin
-        );
-        screenX = targetX + (halo.x / sourceWidth) * targetW;
-        screenY = targetY + (halo.y / sourceHeight) * targetH;
-      }
+      const { x: screenX, y: screenY } = LayoutAgent.toCanvas(o, halo.x, halo.y);
 
       ctx.save();
       ctx.shadowColor = `rgba(99, 102, 241, ${opacity * 0.7})`;
@@ -488,27 +498,8 @@ export class LayoutAgent {
   }
 
   private static renderCursor(o: RenderContext): void {
-    const { ctx, canvasWidth, canvasHeight, mousePos, camera, mode, sourceWidth, sourceHeight } = o;
-    let cx = mousePos.x;
-    let cy = mousePos.y;
-
-    if (mode === 'dynamic_crop') {
-      const scaleX = canvasWidth / camera.cropWidth;
-      const scaleY = canvasHeight / camera.cropHeight;
-      cx = (mousePos.x - camera.cropX) * scaleX;
-      cy = (mousePos.y - camera.cropY) * scaleY;
-    } else {
-      const margin = mode === 'gradient_mesh' ? 20 : 16;
-      const { targetX, targetY, targetW, targetH } = LayoutAgent.calculateCardBounds(
-        canvasWidth,
-        canvasHeight,
-        sourceWidth,
-        sourceHeight,
-        margin
-      );
-      cx = targetX + (mousePos.x / sourceWidth) * targetW;
-      cy = targetY + (mousePos.y / sourceHeight) * targetH;
-    }
+    const { ctx, canvasWidth, canvasHeight, mousePos } = o;
+    const { x: cx, y: cy } = LayoutAgent.toCanvas(o, mousePos.x, mousePos.y);
 
     if (cx < 0 || cx > canvasWidth || cy < 0 || cy > canvasHeight) return;
 

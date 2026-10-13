@@ -246,6 +246,22 @@ const Popup: React.FC = () => {
             </option>
           ))}
         </select>
+        {config.layout === 'widescreen' && (
+          <div className="divide-y divide-white/5">
+            <Toggle
+              label="Zoom on clicks"
+              hint="Punches in where you click, then back to full screen"
+              checked={!!config.wideZoom}
+              onChange={(wideZoom) => update({ wideZoom })}
+            />
+            <Toggle
+              label="Mouse effects"
+              hint="Highlights the cursor and ripples on clicks"
+              checked={!!config.wideMouseFx}
+              onChange={(wideMouseFx) => update({ wideMouseFx })}
+            />
+          </div>
+        )}
       </section>
 
       <section className="divide-y divide-white/5">
