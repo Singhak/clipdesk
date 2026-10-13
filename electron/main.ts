@@ -8,6 +8,7 @@ import {
   Menu,
   nativeImage,
   net,
+  Notification,
   screen,
   session,
   shell,
@@ -21,6 +22,9 @@ import {
   DEFAULT_DESKTOP_CONFIG,
   DesktopConfig,
   IDLE_STATE,
+  PermissionKind,
+  PermissionState,
+  PermissionStatus,
   PointerSample,
   RecState,
   RecordingExtension,
@@ -103,6 +107,7 @@ function baseWebPreferences(extra: Electron.WebPreferences = {}): Electron.WebPr
 
 function showLauncher(): void {
   if (launcher && !launcher.isDestroyed()) {
+    if (launcher.isMinimized()) launcher.restore();
     launcher.show();
     launcher.focus();
     return;
@@ -275,6 +280,12 @@ function onStatusChange(prev: RecState['status']): void {
     registerShortcuts();
     if (state.camera) showCameraBubble();
   }
+  // Esc cancels the 3-2-1 even though the overlay never takes focus; only held for those few seconds
+  if (s === 'countdown') {
+    if (!globalShortcut.isRegistered('Escape')) globalShortcut.register('Escape', () => sendControl('cancel'));
+  } else if (globalShortcut.isRegistered('Escape')) {
+    globalShortcut.unregister('Escape');
+  }
   if (s === 'idle') {
     stopTracking();
     globalShortcut.unregisterAll();
@@ -323,7 +334,7 @@ async function startRecording(next: DesktopConfig): Promise<void> {
   config = { ...next };
   const source = (await listSources()).find((s) => s.id === config.sourceId);
   if (!source) {
-    setState({ error: 'That screen or window is no longer available. Pick it again.' });
+    setState({ error: 'That screen or window is no longer available (it may have been closed). Pick another one and try again.' });
     return;
   }
 
@@ -331,7 +342,7 @@ async function startRecording(next: DesktopConfig): Promise<void> {
     if (config.camera) await systemPreferences.askForMediaAccess('camera');
     if (config.mic) await systemPreferences.askForMediaAccess('microphone');
     if (systemPreferences.getMediaAccessStatus('screen') === 'denied') {
-      setState({ error: 'Allow ClipDesk under System Settings → Privacy & Security → Screen Recording, then reopen it.' });
+      setState({ error: 'ClipDesk cannot see your screen yet. Turn on ClipDesk in System Settings → Privacy & Security → Screen Recording, then reopen the app.' });
       return;
     }
   }
@@ -356,10 +367,10 @@ async function startRecording(next: DesktopConfig): Promise<void> {
   });
   recorder.on('closed', () => {
     recorder = null;
-    if (isActive(state) && state.status !== 'saving') setState({ ...IDLE_STATE, error: 'The recorder stopped unexpectedly.' });
+    if (isActive(state) && state.status !== 'saving') setState({ ...IDLE_STATE, error: 'Recording stopped unexpectedly. Anything already captured may be in your Videos > ClipDesk folder.' });
   });
   recorder.webContents.on('render-process-gone', (_e, details) => {
-    setState({ ...IDLE_STATE, error: `The recorder crashed (${details.reason}).` });
+    setState({ ...IDLE_STATE, error: `Recording stopped because the recorder crashed (${details.reason}). Anything already captured may be in your Videos > ClipDesk folder.` });
   });
   void recorder.loadFile(pageUrl('recorder.html'));
   launcher?.hide();
@@ -474,9 +485,39 @@ function stopTracking(): void {
 // ---------- shortcuts and tray ----------
 
 function registerShortcuts(): void {
-  if (globalShortcut.isRegistered('Alt+Shift+P')) return;
-  globalShortcut.register('Alt+Shift+P', () => sendControl('togglePause'));
-  globalShortcut.register('Alt+Shift+S', () => sendControl('stop'));
+  const failed: string[] = [];
+  const bind = (accelerator: string, action: ControlAction) => {
+    if (globalShortcut.isRegistered(accelerator)) return;
+    let ok = false;
+    try {
+      ok = globalShortcut.register(accelerator, () => sendControl(action));
+    } catch (e) {
+      report('warn', `Could not register ${accelerator}.`, e);
+    }
+    if (!ok) failed.push(accelerator);
+  };
+  bind('Alt+Shift+P', 'togglePause');
+  bind('Alt+Shift+S', 'stop');
+  if (failed.length === 0) return;
+  const message = `The shortcut ${failed.join(' and ')} is already used by another app, so it won't work. Use the floating bar or the tray icon to pause and stop.`;
+  log('warn', 'main', message);
+  setState({ notice: message });
+  if (Notification.isSupported()) new Notification({ title: 'ClipDesk shortcut unavailable', body: message }).show();
+}
+
+/** Asks before throwing a take away; the parent window (if any) holds the dialog */
+async function confirmDiscard(): Promise<boolean> {
+  const options: Electron.MessageBoxOptions = {
+    type: 'warning',
+    buttons: ['Discard recording', 'Keep recording'],
+    defaultId: 1,
+    cancelId: 1,
+    message: 'Discard this recording?',
+    detail: 'The video recorded so far will be deleted. This cannot be undone.'
+  };
+  const parent = BrowserWindow.getFocusedWindow();
+  const { response } = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options);
+  return response === 0;
 }
 
 function refreshTray(): void {
@@ -498,7 +539,7 @@ function refreshTray(): void {
         ? [
             { label: state.status === 'paused' ? 'Resume  (Alt+Shift+P)' : 'Pause  (Alt+Shift+P)', click: () => sendControl('togglePause') },
             { label: 'Stop and save  (Alt+Shift+S)', click: () => sendControl('stop') },
-            { label: 'Discard recording', click: () => sendControl('cancel') },
+            { label: 'Discard recording…', click: () => void confirmDiscard().then((yes) => yes && sendControl('cancel')) },
             { type: 'separator' as const }
           ]
         : []),
@@ -531,7 +572,8 @@ function updateMenuItem(recording: boolean): Electron.MenuItemConstructorOptions
 function createTray(): void {
   const image = nativeImage.createFromPath(ICON);
   tray = new Tray(image.isEmpty() ? nativeImage.createEmpty() : image);
-  tray.on('click', () => (isActive(state) ? sendControl('togglePause') : showLauncher()));
+  // A click opens the app (its recording view while a take is running); pause and stop live in the menu
+  tray.on('click', () => showLauncher());
   refreshTray();
 }
 
@@ -606,10 +648,22 @@ async function saveRecording(req: SaveRequest): Promise<SavedRecording> {
   const noiseCancellation = req.noiseCancellation ?? config.noiseCancellation ?? 'studio';
   const bitrate = req.bitrate === '6M' || req.bitrate === '16M' ? req.bitrate : undefined;
 
+  // Real progress for the "Converting… 42%" label: FFmpeg reports output seconds, the take length is known
+  const totalSec = Math.max(1, req.timerMs / 1000);
+  let lastPct = -1;
+  const onSeconds = (sec: number) => {
+    const pct = Math.min(99, Math.max(0, Math.round((sec / totalSec) * 100)));
+    if (pct !== lastPct && state.status === 'saving') {
+      lastPct = pct;
+      setState({ progress: pct });
+    }
+  };
+  setState({ progress: 0 });
+
   if (extension !== 'mp4') {
     const mp4File = path.join(await recordingsDir(), `${baseName}.mp4`);
     try {
-      await FFmpegManager.convertToMp4(rawFile, mp4File, { noiseCancellation, bitrate });
+      await FFmpegManager.convertToMp4(rawFile, mp4File, { noiseCancellation, bitrate, onSeconds });
       // Clean up the temporary raw file on successful conversion
       await fs.unlink(rawFile).catch(() => {});
       finalFile = mp4File;
@@ -617,19 +671,23 @@ async function saveRecording(req: SaveRequest): Promise<SavedRecording> {
       finalSize = stat.size;
     } catch (e) {
       report('warn', 'Native FFmpeg conversion failed, keeping raw recording:', e);
-      req.warnings.push('MP4 conversion encountered an issue; raw recording kept.');
+      await fs.rm(mp4File, { force: true }).catch(() => undefined);
+      req.warnings.push(
+        `Couldn't convert the video to MP4, so it was saved as a WebM file instead: ${rawFile}. Most players and editors open WebM; if you need MP4, use Show in folder and convert it with any video converter.`
+      );
     }
   } else {
     // If MediaRecorder recorded direct MP4, post-process with FFmpeg for studio noise cancellation & faststart
     const optimizedFile = path.join(await recordingsDir(), `${baseName}.optimized.mp4`);
     try {
-      await FFmpegManager.convertToMp4(rawFile, optimizedFile, { noiseCancellation, bitrate });
+      await FFmpegManager.convertToMp4(rawFile, optimizedFile, { noiseCancellation, bitrate, onSeconds });
       await fs.unlink(rawFile).catch(() => {});
       await fs.rename(optimizedFile, rawFile);
       const stat = await fs.stat(rawFile);
       finalSize = stat.size;
     } catch (e) {
       report('warn', 'Post-processing optimization skipped:', e);
+      await fs.rm(optimizedFile, { force: true }).catch(() => undefined);
     }
   }
 
@@ -682,6 +740,32 @@ function registerIpc(): void {
       return;
     }
     sendControl(action);
+  });
+
+  ipcMain.on('folder:open', () => void recordingsDir().then((d) => shell.openPath(d)));
+  ipcMain.handle('permissions:status', (): PermissionStatus => {
+    const read = (kind: PermissionKind): PermissionState => {
+      if (process.platform !== 'darwin' && process.platform !== 'win32') return 'unknown';
+      try {
+        return systemPreferences.getMediaAccessStatus(kind) as PermissionState;
+      } catch {
+        return 'unknown';
+      }
+    };
+    // Screen status is only reported on macOS; elsewhere capture needs no permission
+    return {
+      platform: process.platform,
+      camera: read('camera'),
+      microphone: read('microphone'),
+      screen: process.platform === 'darwin' ? read('screen') : 'granted'
+    };
+  });
+  ipcMain.on('permissions:open-settings', (_e, kind: PermissionKind) => {
+    const mac = { camera: 'Privacy_Camera', microphone: 'Privacy_Microphone', screen: 'Privacy_ScreenCapture' } as const;
+    const win = { camera: 'ms-settings:privacy-webcam', microphone: 'ms-settings:privacy-microphone', screen: '' } as const;
+    if (!(kind in mac)) return;
+    if (process.platform === 'darwin') void shell.openExternal(`x-apple.systempreferences:com.apple.preference.security?${mac[kind]}`);
+    else if (process.platform === 'win32' && win[kind]) void shell.openExternal(win[kind]);
   });
 
   ipcMain.handle('config:get', () => config);
@@ -792,7 +876,10 @@ function registerIpc(): void {
       setState({ ...IDLE_STATE });
       return rec;
     } catch (e) {
-      setState({ ...IDLE_STATE, error: `The recording could not be saved (${e instanceof Error ? e.message : String(e)}).` });
+      setState({
+        ...IDLE_STATE,
+        error: `Couldn't save your recording (${e instanceof Error ? e.message : String(e)}). Any footage that was captured may still be in your Videos > ClipDesk folder.`
+      });
       throw e;
     }
   });
@@ -937,8 +1024,18 @@ if (!app.requestSingleInstanceLock()) {
       });
       if (choice === 0) sendControl('stop');
       else if (choice === 1) {
-        setState({ ...IDLE_STATE });
-        app.exit(0);
+        const sure = dialog.showMessageBoxSync({
+          type: 'warning',
+          buttons: ['Discard and quit', 'Keep recording'],
+          defaultId: 1,
+          cancelId: 1,
+          message: 'Discard this recording and quit?',
+          detail: 'The video recorded so far will be deleted. This cannot be undone.'
+        });
+        if (sure === 0) {
+          setState({ ...IDLE_STATE });
+          void abortTake().finally(() => app.exit(0));
+        }
       }
     }
   });

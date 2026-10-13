@@ -109,6 +109,8 @@ export class FFmpegManager {
     options?: {
       bitrate?: string;
       noiseCancellation?: 'off' | 'studio' | 'fan_killer' | 'mild';
+      /** Reports how far into the output the encode has got */
+      onSeconds?: (sec: number) => void;
     }
   ): Promise<void> {
     const bitrate = options?.bitrate ?? '12M';
@@ -152,7 +154,16 @@ export class FFmpegManager {
 
       args.push('-movflags', '+faststart', outputPath);
 
-    await FFmpegManager.executePipeline(args);
+    const onSeconds = options?.onSeconds;
+    await FFmpegManager.executePipeline(
+      args,
+      onSeconds
+        ? (data) => {
+            const m = /time=(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(data);
+            if (m) onSeconds(Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]));
+          }
+        : undefined
+    );
   }
 
   /**

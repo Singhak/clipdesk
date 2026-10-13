@@ -74,11 +74,13 @@ async function startCamera(): Promise<boolean> {
     cameraSource = new TrackFrameSource(cameraStream.getVideoTracks()[0]);
     return true;
   } catch {
-    warnings.push(
+    const text =
       reel.platform === 'darwin'
         ? 'The camera is blocked, so the camera bubble is off. Allow ClipDesk in System Settings → Privacy & Security → Camera.'
-        : 'The camera is blocked or unavailable, so the camera bubble is off. Check Settings → Privacy & security → Camera.'
-    );
+        : 'The camera is blocked or unavailable, so the camera bubble is off. Check Settings → Privacy & security → Camera.';
+    warnings.push(text);
+    // Also tell the user right now, not only on the result page
+    setState({ notice: `Recording without the camera. ${text}` });
     return false;
   }
 }
@@ -236,6 +238,7 @@ async function main(): Promise<void> {
       });
     } catch {
       warnings.push('The microphone is blocked or unavailable, so there is no voice-over.');
+      setState({ notice: 'Recording without a microphone: it is blocked or unavailable, so there will be no voice-over.' });
     }
   }
   webcamConfig.background = config.cameraBackground ?? 'none';

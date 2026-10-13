@@ -63,8 +63,23 @@ export function initUpdater(changed: () => void): void {
   });
   autoUpdater.on('error', (e) => {
     setStatus({ kind: 'error' });
-    if (manualCheck) void dialog.showMessageBox({ type: 'error', message: "Couldn't check for updates.", detail: e.message });
+    const retry = manualCheck;
     manualCheck = false;
+    if (retry) {
+      // The technical reason goes to the log; the dialog says what to do about it
+      void dialog
+        .showMessageBox({
+          type: 'error',
+          buttons: ['Try again', 'Close'],
+          defaultId: 0,
+          cancelId: 1,
+          message: "Couldn't check for updates.",
+          detail: 'Check your internet connection and try again. If it keeps failing, you can download the latest version from the ClipDesk website.'
+        })
+        .then(({ response }) => {
+          if (response === 0) void checkNow(true);
+        });
+    }
   });
 
   // Let startup settle before touching the network

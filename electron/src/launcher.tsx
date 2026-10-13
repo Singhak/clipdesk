@@ -10,6 +10,7 @@ import {
   DesktopConfig,
   DesktopLayout,
   IDLE_STATE,
+  PermissionStatus,
   NoiseSuppressionMode,
   RecState,
   SourceInfo,
@@ -21,11 +22,75 @@ const reel = window.reel;
 const CONFIG_STORAGE = 'clipdesk.desktopConfig';
 
 const LAYOUTS: { id: DesktopLayout; label: string; hint: string }[] = [
-  { id: 'dynamic_crop', label: 'Follow cursor', hint: '9:16 crop that follows your mouse and zooms on clicks' },
-  { id: 'blur_backdrop', label: 'Blur backdrop', hint: 'Whole screen in the middle, blurred copy behind it' },
-  { id: 'gradient_mesh', label: 'Gradient', hint: 'Whole screen on a gradient background' },
-  { id: 'widescreen', label: '16:9 video', hint: 'Classic landscape video, like Loom' }
+  { id: 'dynamic_crop', label: 'Vertical, follows mouse', hint: 'Tall video for phones. Follows your mouse and zooms where you click' },
+  { id: 'blur_backdrop', label: 'Vertical, blurred sides', hint: 'Tall video. Whole screen in the middle, blurred copy behind it' },
+  { id: 'gradient_mesh', label: 'Vertical, colour sides', hint: 'Tall video. Whole screen on a colourful background' },
+  { id: 'widescreen', label: 'Widescreen', hint: 'Normal landscape video (16:9), like Loom' }
 ];
+
+const NOISE_MODES: { id: NoiseSuppressionMode; label: string; hint: string }[] = [
+  { id: 'studio', label: 'Best voice quality', hint: 'Removes fan, air-con and street noise' },
+  { id: 'fan_killer', label: 'Strong cleanup', hint: 'For very loud fans or air-con' },
+  { id: 'mild', label: 'Light cleanup', hint: 'Keeps some natural room sound' },
+  { id: 'off', label: 'No cleanup', hint: 'Your mic exactly as it sounds' }
+];
+
+/** Live microphone level (0..1) so people can see the mic works before recording; null when not listening */
+function useMicLevel(enabled: boolean): { level: number; error: string | null } {
+  const [level, setLevel] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!enabled) {
+      setLevel(0);
+      setError(null);
+      return;
+    }
+    let stream: MediaStream | null = null;
+    let ctx: AudioContext | null = null;
+    let timer: number | undefined;
+    let cancelled = false;
+    navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((s) => {
+        if (cancelled) {
+          s.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        stream = s;
+        setError(null);
+        ctx = new AudioContext();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 512;
+        ctx.createMediaStreamSource(s).connect(analyser);
+        const data = new Uint8Array(analyser.fftSize);
+        timer = window.setInterval(() => {
+          analyser.getByteTimeDomainData(data);
+          let peak = 0;
+          for (const v of data) peak = Math.max(peak, Math.abs(v - 128));
+          // Speech peaks well below full scale, so stretch the range a little
+          setLevel(Math.min(1, (peak / 128) * 2.2));
+        }, 100);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        const name = e instanceof DOMException ? e.name : '';
+        setError(
+          name === 'NotAllowedError'
+            ? 'Microphone access is blocked.'
+            : name === 'NotFoundError'
+              ? 'No microphone found.'
+              : 'The microphone could not be opened.'
+        );
+      });
+    return () => {
+      cancelled = true;
+      if (timer) window.clearInterval(timer);
+      stream?.getTracks().forEach((t) => t.stop());
+      void ctx?.close().catch(() => undefined);
+    };
+  }, [enabled]);
+  return { level, error };
+}
 
 const TEMPLATES: { id: TemplateId; label: string }[] = [
   { id: 'browser', label: 'Browser walkthrough' },
@@ -61,7 +126,7 @@ const Toggle: React.FC<{ label: string; checked: boolean; onChange: (v: boolean)
   <label className={`flex items-center justify-between gap-3 py-2 ${disabled ? 'opacity-50' : 'cursor-pointer'}`}>
     <span>
       <span className="block text-[13px] font-semibold">{label}</span>
-      {hint && <span className="block text-[11px] text-slate-400">{hint}</span>}
+      {hint && <span className="block text-[12px] text-slate-400">{hint}</span>}
     </span>
     <input
       type="checkbox"
@@ -74,9 +139,37 @@ const Toggle: React.FC<{ label: string; checked: boolean; onChange: (v: boolean)
 );
 
 const SectionTitle: React.FC<{ children: React.ReactNode; action?: React.ReactNode }> = ({ children, action }) => (
-  <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wide text-slate-400">
+  <div className="flex items-center justify-between text-[12px] font-bold uppercase tracking-wide text-slate-400">
     <span>{children}</span>
     {action}
+  </div>
+);
+
+const PermissionNotice: React.FC<{
+  text: string;
+  platform: string;
+  kind: 'camera' | 'microphone' | 'screen';
+  settingsLabel?: string;
+  onSkip?: () => void;
+  skipLabel?: string;
+}> = ({ text, platform, kind, settingsLabel, onSkip, skipLabel }) => (
+  <div role="alert" className="text-[12px] p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-100 space-y-2">
+    <p>{text}</p>
+    <div className="flex flex-wrap gap-2">
+      {(platform === 'darwin' || (platform === 'win32' && kind !== 'screen')) && (
+        <button
+          onClick={() => reel.permissions.openSettings(kind)}
+          className="px-2.5 py-1 rounded-md bg-amber-500/80 hover:bg-amber-400 text-black font-semibold cursor-pointer"
+        >
+          {settingsLabel ?? (platform === 'darwin' ? 'Open System Settings' : 'Open Windows Settings')}
+        </button>
+      )}
+      {onSkip && (
+        <button onClick={onSkip} className="px-2.5 py-1 rounded-md bg-white/10 hover:bg-white/20 font-semibold cursor-pointer">
+          {skipLabel}
+        </button>
+      )}
+    </div>
   </div>
 );
 
@@ -87,15 +180,30 @@ const Launcher: React.FC = () => {
   const [kind, setKind] = useState<'screen' | 'window'>('screen');
   const [now, setNow] = useState(Date.now());
   const [starting, setStarting] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [perms, setPerms] = useState<PermissionStatus | null>(null);
+  const refreshing$ = React.useRef(false);
 
   const refresh = useCallback(async () => {
-    const list = await reel.getSources();
-    setSources(list);
-    setConfig((c) => (list.some((s) => s.id === c.sourceId) ? c : { ...c, sourceId: list.find((s) => s.kind === 'screen')?.id ?? '' }));
+    if (refreshing$.current) return;
+    refreshing$.current = true;
+    setRefreshing(true);
+    try {
+      const list = await reel.getSources();
+      setSources(list);
+      setConfig((c) => (list.some((s) => s.id === c.sourceId) ? c : { ...c, sourceId: list.find((s) => s.kind === 'screen')?.id ?? '' }));
+    } finally {
+      refreshing$.current = false;
+      setRefreshing(false);
+    }
   }, []);
+
+  const checkPermissions = useCallback(() => void reel.permissions.status().then(setPerms).catch(() => undefined), []);
 
   useEffect(() => {
     void refresh();
+    checkPermissions();
     void reel.getState().then(setRecState);
     const off = reel.onState((s) => {
       setRecState(s);
@@ -103,14 +211,32 @@ const Launcher: React.FC = () => {
     });
     const id = window.setInterval(() => setNow(Date.now()), 250);
     // Window list goes stale while the launcher sits in the background
-    const onFocus = () => void refresh();
+    // (and people may have just changed a permission in system settings)
+    const onFocus = () => {
+      void refresh();
+      checkPermissions();
+    };
     window.addEventListener('focus', onFocus);
     return () => {
       off();
       window.clearInterval(id);
       window.removeEventListener('focus', onFocus);
     };
-  }, [refresh]);
+  }, [refresh, checkPermissions]);
+
+  // New windows open and close all the time: keep the Windows list fresh while it is on screen
+  useEffect(() => {
+    if (kind !== 'window') return;
+    void refresh();
+    const t = window.setInterval(() => document.visibilityState === 'visible' && void refresh(), 5000);
+    return () => window.clearInterval(t);
+  }, [kind, refresh]);
+
+  const idle = state.status === 'idle';
+  const mic = useMicLevel(config.mic && idle && !starting);
+  useEffect(() => {
+    if (!idle) setConfirmDiscard(false);
+  }, [idle]);
 
   const update = (patch: Partial<DesktopConfig>) => {
     const next = { ...config, ...patch };
@@ -146,9 +272,41 @@ const Launcher: React.FC = () => {
             </button>
           </div>
         )}
-        <button onClick={() => reel.control('cancel')} className="py-1.5 text-[12px] text-slate-400 hover:text-rose-300 cursor-pointer">
-          Discard recording
-        </button>
+        {state.notice && (
+          <div role="alert" className="text-[12px] p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-200">
+            {state.notice}
+          </div>
+        )}
+        {state.status === 'saving' && (
+          <p role="status" className="text-[13px] text-slate-300">
+            {typeof state.progress === 'number' && state.progress > 0 ? `Converting to MP4… ${state.progress}%` : 'Saving your recording…'}
+          </p>
+        )}
+        {state.status !== 'saving' &&
+          (confirmDiscard ? (
+            <div role="alertdialog" aria-label="Discard this recording?" className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 space-y-2">
+              <p className="text-[13px] font-semibold text-rose-100">Discard this recording? The video so far will be deleted.</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  autoFocus
+                  onClick={() => {
+                    setConfirmDiscard(false);
+                    reel.control('cancel');
+                  }}
+                  className="py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-[13px] font-bold cursor-pointer"
+                >
+                  Yes, discard
+                </button>
+                <button onClick={() => setConfirmDiscard(false)} className="py-2 rounded-lg bg-white/10 hover:bg-white/20 text-[13px] font-bold cursor-pointer">
+                  Keep recording
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => (live ? setConfirmDiscard(true) : reel.control('cancel'))} className="py-1.5 text-[12px] text-slate-400 hover:text-rose-300 cursor-pointer">
+              {live ? 'Discard recording…' : 'Cancel'}
+            </button>
+          ))}
         <p className="text-[12px] text-slate-500">You can close this window. The floating bar, the tray icon and Alt+Shift+P / Alt+Shift+S keep working.</p>
       </main>
     );
@@ -163,20 +321,64 @@ const Launcher: React.FC = () => {
       <header className="flex items-center gap-2">
         <img src="icons/icon-32.png" alt="" className="w-7 h-7" />
         <h1 className="text-[17px] font-extrabold">ClipDesk</h1>
-        <span className="ml-auto text-[10px] font-bold text-indigo-300 bg-indigo-500/15 px-2 py-0.5 rounded-full">9:16 RECORDER</span>
+        <span title="Records your screen as a vertical reel or a normal widescreen video" className="ml-auto text-[12px] font-bold text-indigo-300 bg-indigo-500/15 px-2 py-0.5 rounded-full">Screen recorder</span>
       </header>
 
       {state.error && (
-        <div role="alert" className="text-[12px] p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-200">
-          {state.error}
+        <div role="alert" className="text-[12px] p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-200 space-y-2">
+          <p>{state.error}</p>
+          <div className="flex flex-wrap gap-2">
+            {config.sourceId && (
+              <button onClick={() => void start()} className="px-2.5 py-1 rounded-md bg-rose-600/80 hover:bg-rose-500 text-white font-semibold cursor-pointer">
+                Try again
+              </button>
+            )}
+            <button onClick={() => reel.openRecordingsFolder()} className="px-2.5 py-1 rounded-md bg-white/10 hover:bg-white/20 font-semibold cursor-pointer">
+              Open recordings folder
+            </button>
+            <button onClick={() => reel.resetError()} className="px-2.5 py-1 rounded-md hover:bg-white/10 font-semibold cursor-pointer">
+              Dismiss
+            </button>
+          </div>
         </div>
+      )}
+
+      {perms && perms.screen === 'denied' && (
+        <PermissionNotice
+          text="ClipDesk isn't allowed to record your screen yet."
+          platform={perms.platform}
+          kind="screen"
+          settingsLabel="Open System Settings"
+        />
+      )}
+      {perms && config.camera && perms.camera === 'denied' && (
+        <PermissionNotice
+          text="Camera access is turned off for ClipDesk, so the camera bubble won't appear."
+          platform={perms.platform}
+          kind="camera"
+          onSkip={() => update({ camera: false })}
+          skipLabel="Record without camera"
+        />
+      )}
+      {perms && config.mic && perms.microphone === 'denied' && (
+        <PermissionNotice
+          text="Microphone access is turned off for ClipDesk, so your voice won't be recorded."
+          platform={perms.platform}
+          kind="microphone"
+          onSkip={() => update({ mic: false })}
+          skipLabel="Record without microphone"
+        />
       )}
 
       <section className="space-y-2">
         <SectionTitle
           action={
-            <button onClick={() => void refresh()} className="normal-case tracking-normal text-indigo-300 hover:text-indigo-200 cursor-pointer">
-              Refresh
+            <button
+              onClick={() => void refresh()}
+              aria-label="Refresh the list of screens and windows"
+              className="normal-case tracking-normal text-indigo-300 hover:text-indigo-200 cursor-pointer"
+            >
+              {refreshing ? 'Refreshing…' : 'Refresh'}
             </button>
           }
         >
@@ -198,7 +400,7 @@ const Launcher: React.FC = () => {
           {sources === null && <p className="col-span-2 text-[12px] text-slate-400 py-6 text-center">Looking for screens and windows…</p>}
           {sources !== null && shown.length === 0 && (
             <p className="col-span-2 text-[12px] text-slate-400 py-6 text-center">
-              {kind === 'screen' ? 'No screens found. Check the screen recording permission.' : 'No windows found.'}
+              {kind === 'screen' ? 'No screens found. Check that ClipDesk is allowed to record your screen.' : 'No open windows found. Open the app you want to record, then press Refresh.'}
             </p>
           )}
           {shown.map((s) => (
@@ -207,27 +409,28 @@ const Launcher: React.FC = () => {
               onClick={() => update({ sourceId: s.id })}
               aria-pressed={config.sourceId === s.id}
               title={s.name}
+              aria-label={`${s.kind === 'screen' ? 'Screen' : 'Window'}: ${s.name}`}
               className={`text-left rounded-xl border p-1.5 cursor-pointer ${
                 config.sourceId === s.id ? 'border-indigo-500 bg-indigo-500/15' : 'border-white/10 bg-white/5 hover:bg-white/10'
               }`}
             >
               <img src={s.thumbnail} alt="" className="w-full aspect-video object-contain rounded-md bg-black" />
-              <span className="flex items-center gap-1.5 mt-1 text-[11px] font-semibold">
+              <span className="flex items-center gap-1.5 mt-1 text-[12px] font-semibold">
                 {s.appIcon && <img src={s.appIcon} alt="" className="w-3.5 h-3.5" />}
                 <span className="truncate">{s.name}</span>
               </span>
             </button>
           ))}
         </div>
-        <p className="text-[11px] text-slate-400">
+        <p className="text-[12px] text-slate-400">
           {isWindow
-            ? 'Window recording keeps the crop centred. Pick a screen to have the reel follow your cursor and zoom on clicks.'
-            : 'The reel follows your cursor anywhere on this screen and zooms where you click.'}
+            ? 'Recording one window keeps the view centred. Pick a screen instead to follow your mouse and zoom on clicks.'
+            : 'The video follows your mouse anywhere on this screen and zooms where you click.'}
         </p>
       </section>
 
       <section className="space-y-2">
-        <SectionTitle>Format</SectionTitle>
+        <SectionTitle>Video shape</SectionTitle>
         <div className="grid grid-cols-2 gap-1.5">
           {LAYOUTS.map((l) => (
             <button
@@ -239,7 +442,7 @@ const Launcher: React.FC = () => {
               }`}
             >
               <span className="block text-[12px] font-bold">{l.label}</span>
-              <span className="block text-[10px] text-slate-400 leading-tight mt-0.5">{l.hint}</span>
+              <span className="block text-[12px] text-slate-400 leading-tight mt-0.5">{l.hint}</span>
             </button>
           ))}
         </div>
@@ -247,11 +450,11 @@ const Launcher: React.FC = () => {
           value={config.templateId}
           onChange={(e) => update({ templateId: e.target.value as TemplateId })}
           className="w-full px-2 py-1.5 rounded-lg bg-white/5 border border-white/10 text-[12px]"
-          aria-label="Camera style"
+          aria-label="Video style"
         >
           {TEMPLATES.map((t) => (
             <option key={t.id} value={t.id} className="bg-slate-900">
-              Camera style: {t.label}
+              Style: {t.label}
             </option>
           ))}
         </select>
@@ -273,19 +476,19 @@ const Launcher: React.FC = () => {
         )}
         {(config.layout === 'dynamic_crop' || (config.layout === 'widescreen' && config.wideZoom)) && (
           <div className="space-y-1.5 pt-1">
-            <span className="block text-[11px] font-semibold text-slate-300">Click Zoom Intensity</span>
+            <span className="block text-[12px] font-semibold text-slate-300">How much to zoom when you click</span>
             <div className="grid grid-cols-3 gap-1.5">
               {([
-                { id: 'subtle', label: 'Subtle 1.5x' },
-                { id: 'deep', label: 'Deep 1.95x' },
-                { id: 'ultra', label: 'Ultra 2.35x' }
+                { id: 'subtle', label: 'Gentle 1.5x' },
+                { id: 'deep', label: 'Medium 1.95x' },
+                { id: 'ultra', label: 'Strong 2.35x' }
               ] as const).map((z) => (
                 <button
                   key={z.id}
                   type="button"
                   onClick={() => update({ zoomIntensity: z.id })}
                   aria-pressed={(config.zoomIntensity ?? 'deep') === z.id}
-                  className={`py-1.5 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+                  className={`py-1.5 rounded-lg text-[12px] font-bold border transition-colors cursor-pointer ${
                     (config.zoomIntensity ?? 'deep') === z.id
                       ? 'bg-indigo-600 border-indigo-500 text-white shadow-sm'
                       : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
@@ -321,37 +524,64 @@ const Launcher: React.FC = () => {
         <div>
           <Toggle label="Microphone" checked={config.mic} onChange={(mic) => update({ mic })} />
           {config.mic && (
+            <div className="px-1 pb-2 space-y-1">
+              {mic.error ? (
+                <div role="alert" className="flex flex-wrap items-center gap-2 text-[12px] text-amber-200">
+                  <span>{mic.error}</span>
+                  {(reel.platform === 'win32' || reel.platform === 'darwin') && (
+                    <button onClick={() => reel.permissions.openSettings('microphone')} className="text-indigo-300 hover:text-indigo-200 underline cursor-pointer">
+                      {reel.platform === 'darwin' ? 'Open System Settings' : 'Open Windows Settings'}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div
+                    role="meter"
+                    aria-label="Microphone level"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(mic.level * 100)}
+                    className="h-2 rounded-full bg-white/10 overflow-hidden"
+                  >
+                    <div
+                      className={`h-full rounded-full transition-[width] duration-100 ${mic.level > 0.85 ? 'bg-rose-500' : 'bg-emerald-400'}`}
+                      style={{ width: `${Math.round(mic.level * 100)}%` }}
+                    />
+                  </div>
+                  <span className="block text-[12px] text-slate-400">Say something: the bar should move. If it doesn't, check your microphone.</span>
+                </>
+              )}
+            </div>
+          )}
+          {config.mic && (
             <div className="py-2.5 px-3 bg-white/[0.03] rounded-xl border border-white/5 space-y-2 mt-1 mb-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-200 flex items-center gap-1.5">
+                <span className="text-[12px] font-bold text-slate-200 flex items-center gap-1.5">
                   <svg className="w-3.5 h-3.5 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
-                  Noise Cancellation
+                  Background noise
                 </span>
-                <span className="text-[9.5px] text-indigo-400 font-bold bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">
-                  Fan, AC & Traffic Filter
+                <span className="text-[12px] text-indigo-400 font-bold bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">
+                  Applied when you stop
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-1.5">
-                {[
-                  { id: 'studio', label: 'Studio Clear', hint: 'Kills fan & traffic rumble + dynamic gate' },
-                  { id: 'fan_killer', label: 'Fan & Traffic Killer', hint: 'Aggressive filter for loud fans & AC' },
-                  { id: 'mild', label: 'Mild Ambient', hint: 'Light reduction, natural room warmth' },
-                  { id: 'off', label: 'Off / Raw', hint: 'Direct microphone without DSP' }
-                ].map((m) => {
+                {NOISE_MODES.map((m) => {
                   const active = (config.noiseCancellation ?? 'studio') === m.id;
                   return (
                     <button
                       key={m.id}
                       type="button"
-                      onClick={() => update({ noiseCancellation: m.id as NoiseSuppressionMode })}
+                      aria-pressed={active}
+                      onClick={() => update({ noiseCancellation: m.id })}
                       className={`text-left p-2 rounded-lg border transition-all cursor-pointer ${
                         active
                           ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-sm'
                           : 'bg-white/5 border-white/5 text-slate-400 hover:text-white hover:bg-white/10'
                       }`}
                     >
-                      <span className="block text-[11px] font-bold leading-tight">{m.label}</span>
-                      <span className="block text-[9.5px] text-slate-400 leading-tight mt-0.5">{m.hint}</span>
+                      <span className="block text-[12px] font-bold leading-tight">{m.label}</span>
+                      <span className="block text-[12px] text-slate-400 leading-tight mt-0.5">{m.hint}</span>
                     </button>
                   );
                 })}
@@ -375,7 +605,7 @@ const Launcher: React.FC = () => {
       >
         {starting ? 'Starting…' : 'Start recording'}
       </button>
-      <p className="text-[11px] text-slate-500 text-center">
+      <p className="text-[12px] text-slate-500 text-center">
         The floating controls are hidden from the video. Shortcuts work in any app: Alt+Shift+P pause, Alt+Shift+S stop.
       </p>
 

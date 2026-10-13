@@ -66,6 +66,19 @@ export interface RecState {
   /** False when the global mouse hook isn't available, so clicks don't zoom */
   clickTracking: boolean;
   error?: string;
+  /** Non-fatal heads-up shown while setting up or recording (failed shortcut, camera unavailable) */
+  notice?: string;
+  /** 0..100 while a take is being converted to MP4 after Stop */
+  progress?: number;
+}
+
+export type PermissionKind = 'camera' | 'microphone' | 'screen';
+export type PermissionState = 'granted' | 'denied' | 'not-determined' | 'restricted' | 'unknown';
+export interface PermissionStatus {
+  platform: string;
+  camera: PermissionState;
+  microphone: PermissionState;
+  screen: PermissionState;
 }
 
 export const IDLE_STATE: RecState = {

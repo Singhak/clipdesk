@@ -16,10 +16,11 @@
     </div>
     <div id="counting" class="h-screen flex flex-col items-center justify-center gap-4">
       <div class="w-52 h-52 rounded-full bg-[#0a0d16]/85 border-2 border-indigo-500 flex items-center justify-center">
-        <span id="num" class="text-[110px] font-black leading-none tabular-nums"></span>
+        <span id="num" role="status" aria-live="assertive" aria-atomic="true" aria-label="Countdown" class="text-[110px] font-black leading-none tabular-nums"></span>
       </div>
-      <button id="cancel" class="px-4 py-1.5 rounded-full bg-[#0a0d16]/90 border border-white/20 text-[13px] font-semibold text-slate-200 hover:bg-white/10 cursor-pointer">Cancel</button>
+      <button id="cancel" class="px-4 py-1.5 rounded-full bg-[#0a0d16]/90 border border-white/20 text-[13px] font-semibold text-slate-200 hover:bg-white/10 cursor-pointer">Cancel (Esc)</button>
     </div>
+    <p id="notice" role="alert" hidden class="fixed bottom-2 inset-x-2 p-2 rounded-lg bg-amber-500/90 text-[12px] font-semibold text-black text-center"></p>
     <script type="module" src="./src/countdown.ts"></script>
   </body>
 </html>

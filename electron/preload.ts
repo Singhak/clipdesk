@@ -2,6 +2,8 @@ import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 import type {
   ControlAction,
   DesktopConfig,
+  PermissionKind,
+  PermissionStatus,
   PointerSample,
   RecState,
   RecordingExtension,
@@ -32,6 +34,13 @@ const api = {
   getConfig: (): Promise<DesktopConfig> => ipcRenderer.invoke('config:get'),
   start: (config: DesktopConfig): Promise<void> => ipcRenderer.invoke('recording:start', config),
   resetError: () => ipcRenderer.send('state:reset-error'),
+  openRecordingsFolder: () => ipcRenderer.send('folder:open'),
+
+  // Camera, microphone and screen access
+  permissions: {
+    status: (): Promise<PermissionStatus> => ipcRenderer.invoke('permissions:status'),
+    openSettings: (kind: PermissionKind) => ipcRenderer.send('permissions:open-settings', kind)
+  },
 
   // Licensing: requests go through the main process, as page CSP blocks outside connections
   license: {

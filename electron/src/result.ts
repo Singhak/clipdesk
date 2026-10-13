@@ -86,17 +86,40 @@ async function main(): Promise<void> {
     const notesEl = $('notes');
     notesEl.hidden = false;
     notesEl.textContent = notes.join(' ');
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'ml-2 px-2 py-0.5 rounded-md bg-white/10 hover:bg-white/20 font-semibold text-amber-100 cursor-pointer';
+    open.textContent = 'Open folder';
+    open.addEventListener('click', () => reel.result.showInFolder(id));
+    notesEl.appendChild(open);
   }
 
   // Toast feedback helper
-  function showToast(msg: string) {
+  let toastTimer: number | undefined;
+  const TOAST_OK = 'w-full max-w-2xl p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-xs text-emerald-300 font-semibold transition-all';
+  const TOAST_ERR = 'w-full max-w-2xl p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 text-xs text-rose-200 font-semibold transition-all';
+  /** Errors stay until dismissed or replaced and can carry actions (Try again, Open folder) */
+  function showToast(msg: string, opts: { error?: boolean; actions?: { label: string; run: () => void }[] } = {}) {
     const toast = $('toast');
-    toast.textContent = msg;
+    window.clearTimeout(toastTimer);
+    toast.className = opts.error ? TOAST_ERR : TOAST_OK;
+    toast.setAttribute('role', opts.error ? 'alert' : 'status');
+    toast.textContent = msg.replace(/^[^\w\s]+\s*/u, '');
+    for (const action of opts.actions ?? []) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ml-2 px-2 py-0.5 rounded-md bg-white/10 hover:bg-white/20 cursor-pointer';
+      b.textContent = action.label;
+      b.addEventListener('click', () => {
+        toast.hidden = true;
+        action.run();
+      });
+      toast.appendChild(b);
+    }
     toast.hidden = false;
-    setTimeout(() => {
-      toast.hidden = true;
-    }, 3800);
+    if (!opts.error) toastTimer = window.setTimeout(() => (toast.hidden = true), 3800);
   }
+  const openFolder = { label: 'Open folder', run: () => reel.result.showInFolder(id) };
 
   // ==========================================
   // 1. Play / Pause & Playhead Handling
@@ -157,16 +180,19 @@ async function main(): Promise<void> {
   });
   timeline.setDuration(totalDuration, meta.kept ? cutsFromKept(meta.kept, totalDuration) : []);
 
-  applyCutsBtn.addEventListener('click', async () => {
+  async function saveCuts(): Promise<void> {
     const kept = timeline.keptRanges;
     savingCuts = true;
     updateCutState(kept);
     cutSpinner.hidden = false;
-    applyCutsLabel.textContent = 'Saving with native FFmpeg…';
+    applyCutsLabel.textContent = 'Saving edited video…';
     try {
       const updated = await reel.result.cut(id, kept, totalDuration);
       if (!updated) {
-        showToast('❌ Saving the edit failed. Check logs.');
+        showToast("Couldn't save the edited video. Your original recording is untouched.", {
+          error: true,
+          actions: [{ label: 'Try again', run: () => void saveCuts() }, openFolder]
+        });
         return;
       }
       meta = updated;
@@ -177,14 +203,18 @@ async function main(): Promise<void> {
       );
     } catch (err) {
       console.error('Cut error:', err);
-      showToast('❌ Error while saving the edit.');
+      showToast('Something went wrong while saving the edit. Your original recording is untouched.', {
+        error: true,
+        actions: [{ label: 'Try again', run: () => void saveCuts() }, openFolder]
+      });
     } finally {
       savingCuts = false;
       cutSpinner.hidden = true;
       applyCutsLabel.textContent = 'Save edited video';
       updateCutState(timeline.keptRanges);
     }
-  });
+  }
+  applyCutsBtn.addEventListener('click', () => void saveCuts());
 
   // ==========================================
   // 3. Dynamic AI Captions Studio (Desktop)
@@ -219,7 +249,7 @@ async function main(): Promise<void> {
     const pct = Math.min(99, Math.round((sec / Math.max(0.1, lengthOf(timeline.keptRanges))) * 100));
     exportCaptionsBtn.textContent = `Burning captions… ${pct}%`;
   });
-  exportCaptionsBtn.addEventListener('click', async () => {
+  async function exportCaptions(): Promise<void> {
     exportCaptionsBtn.disabled = true;
     exportCaptionsBtn.textContent = 'Burning captions…';
     try {
@@ -237,12 +267,16 @@ async function main(): Promise<void> {
       showToast('✅ Exported a copy with burned-in captions');
     } catch (err) {
       console.error('Caption export failed:', err);
-      showToast('❌ Caption export failed. Check logs.');
+      showToast("Couldn't export the video with captions. Your recording is untouched.", {
+        error: true,
+        actions: [{ label: 'Try again', run: () => void exportCaptions() }, openFolder]
+      });
     } finally {
       exportCaptionsBtn.disabled = false;
       exportCaptionsBtn.textContent = 'Export with captions';
     }
-  });
+  }
+  exportCaptionsBtn.addEventListener('click', () => void exportCaptions());
 
   // Module Tabs
   const capTabType = $('cap-tab-type');
@@ -277,7 +311,7 @@ async function main(): Promise<void> {
   function renderSegmentsList() {
     const list = $('segments-list');
     const countLabel = $('segments-count-label');
-    countLabel.textContent = `Transcript Segments (${segments.length})`;
+    countLabel.textContent = `Caption lines (${segments.length})`;
     updateExportButton();
     list.innerHTML = '';
 
@@ -291,7 +325,7 @@ async function main(): Promise<void> {
       row.className = 'flex items-center justify-between p-1.5 bg-black/30 rounded-lg border border-white/5 text-slate-300 hover:border-white/10 gap-2';
 
       const timeBtn = document.createElement('span');
-      timeBtn.className = 'font-mono text-[10px] text-amber-400 shrink-0 cursor-pointer hover:underline';
+      timeBtn.className = 'font-mono text-[12px] text-amber-400 shrink-0 cursor-pointer hover:underline';
       timeBtn.textContent = `${seg.startSec.toFixed(1)}s - ${seg.endSec.toFixed(1)}s`;
       timeBtn.title = 'Click to seek video';
       timeBtn.addEventListener('click', () => {
@@ -433,7 +467,9 @@ async function main(): Promise<void> {
       showToast(`✓ Transcribed ${result.length} caption lines`);
     } catch (err) {
       console.error('Transcription failed:', err);
-      transcribeStatus.textContent = `Transcription failed: ${err instanceof Error ? err.message : String(err)}`;
+      console.error('Transcription failed:', err);
+      transcribeStatus.textContent =
+        "Couldn't create captions from speech. The first run needs an internet connection to download the speech model. Check your connection and try again.";
     } finally {
       btnTranscribe.disabled = false;
     }
@@ -653,18 +689,50 @@ async function main(): Promise<void> {
     }
   });
   $('again').addEventListener('click', () => reel.result.recordAgain());
-  $('trash').addEventListener('click', async () => {
-    const btn = $('trash') as HTMLButtonElement;
-    if (btn.dataset.confirm !== '1') {
-      btn.dataset.confirm = '1';
-      btn.textContent = reel.platform === 'darwin' ? 'Move to Trash?' : 'Move to Recycle Bin?';
+  const trashBtn = $('trash') as HTMLButtonElement;
+  const binName = reel.platform === 'darwin' ? 'Trash' : 'Recycle Bin';
+  const trashLabel = `Move to ${binName}`;
+  trashBtn.textContent = trashLabel;
+  let trashTimer: number | undefined;
+  function resetTrash() {
+    window.clearTimeout(trashTimer);
+    delete trashBtn.dataset.confirm;
+    trashBtn.textContent = trashLabel;
+    trashBtn.classList.remove('bg-rose-600', 'text-white');
+  }
+  // Esc backs out of the confirmation
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && trashBtn.dataset.confirm === '1') resetTrash();
+  });
+  trashBtn.addEventListener('click', async () => {
+    if (trashBtn.dataset.confirm !== '1') {
+      trashBtn.dataset.confirm = '1';
+      trashBtn.textContent = `Yes, move to ${binName}`;
+      trashBtn.classList.add('bg-rose-600', 'text-white');
+      showToast(`This moves the video to the ${binName}. You can restore it from there. Click again to confirm, or press Esc to cancel.`);
+      trashTimer = window.setTimeout(resetTrash, 8000);
       return;
     }
-    video.pause();
-    video.removeAttribute('src');
-    video.load();
-    if (activeUrl) URL.revokeObjectURL(activeUrl);
-    if (await reel.result.trash(id)) window.close();
+    window.clearTimeout(trashTimer);
+    try {
+      if (await reel.result.trash(id)) {
+        video.pause();
+        video.removeAttribute('src');
+        video.load();
+        if (activeUrl) URL.revokeObjectURL(activeUrl);
+        window.close();
+      } else {
+        resetTrash();
+        showToast("Couldn't find the file to delete. It may already have been moved.", { error: true, actions: [openFolder] });
+      }
+    } catch (err) {
+      console.error('Trash failed:', err);
+      resetTrash();
+      showToast(`Couldn't move the video to the ${binName}. It may be open in another program.`, {
+        error: true,
+        actions: [{ label: 'Try again', run: () => trashBtn.click() }, openFolder]
+      });
+    }
   });
 
   // Auto-play the preview, skipping anything cut

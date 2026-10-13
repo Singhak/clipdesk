@@ -8,7 +8,6 @@ let state: RecState = { ...IDLE_STATE };
 let collapsed = false;
 let showPreview = false;
 let confirmDiscard = false;
-let confirmTimer: number | null = null;
 
 const icon = {
   pause: '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>',
@@ -45,26 +44,39 @@ function togglePreview(): void {
   render();
 }
 
+function statusLabel(): string {
+  if (state.status === 'saving') {
+    // Real progress while FFmpeg converts the take to MP4
+    return typeof state.progress === 'number' && state.progress > 0 ? `Converting… ${state.progress}%` : 'Saving…';
+  }
+  if (state.status === 'ready') return 'Set up';
+  if (state.status === 'countdown' || state.status === 'starting') return 'Get ready';
+  return '';
+}
+
 function render(): void {
+  // Re-rendering replaces every button, so remember which one had focus and give it back
+  const focusedId = document.activeElement instanceof HTMLElement ? document.activeElement.id : '';
   const paused = state.status === 'paused';
   const live = state.status === 'recording' || paused;
   const saving = state.status === 'saving';
   const ready = state.status === 'ready';
-  const status = saving
-    ? 'Saving…'
-    : ready
-      ? 'Set up'
-      : state.status === 'countdown' || state.status === 'starting'
-        ? 'Get ready'
-        : '';
+  const status = statusLabel();
 
   const head = `
     <span class="drag px-1 text-indigo-400 text-sm tracking-[-2px] cursor-grab" title="Drag to move">⋮⋮</span>
     <span class="w-2.5 h-2.5 rounded-full ${paused ? 'bg-amber-400' : 'bg-rose-500 rec-dot'}"></span>
-    <span id="time" class="drag font-extrabold tabular-nums min-w-11 text-[13px]">${status || formatTime(elapsedMs(state))}</span>`;
+    <span id="time" role="timer" aria-live="off" class="drag font-extrabold tabular-nums min-w-11 text-[13px]">${status || formatTime(elapsedMs(state))}</span>`;
 
   if (collapsed) {
     root.innerHTML = head + button('expand', icon.expand, 'Show controls');
+  } else if (confirmDiscard && live) {
+    // Two explicit choices instead of a timed "click again": nothing expires while the user thinks
+    root.innerHTML =
+      head +
+      `<span role="alert" class="text-[13px] font-bold px-1 whitespace-nowrap">Discard this recording?</span>` +
+      button('discard-yes', '<span>Discard</span>', 'Discard the recording permanently', 'bg-rose-600 hover:bg-rose-500') +
+      button('discard-no', '<span>Keep recording</span>', 'Keep recording (Esc)');
   } else {
     root.innerHTML =
       head +
@@ -73,18 +85,13 @@ function render(): void {
           button('pause', paused ? icon.play : icon.pause, paused ? 'Resume (Alt+Shift+P)' : 'Pause (Alt+Shift+P)') +
           button('stop', `${icon.stop}<span>Stop</span>`, 'Stop and save (Alt+Shift+S)', 'bg-rose-600 hover:bg-rose-500') +
           button('camera', icon.cam, state.camera ? 'Hide camera' : 'Show camera', state.camera ? 'bg-indigo-500/40 hover:bg-indigo-500/60' : 'bg-white/10 hover:bg-white/20') +
-          button('preview', icon.eye, showPreview ? 'Hide 9:16 live crop' : 'Peek 9:16 live crop', showPreview ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white/10 hover:bg-white/20') +
-          button(
-            'discard',
-            confirmDiscard ? '<span>Discard?</span>' : icon.trash,
-            confirmDiscard ? 'Click again to discard' : 'Discard recording',
-            confirmDiscard ? 'bg-rose-500/30 text-rose-100' : 'bg-white/10 hover:bg-white/20'
-          )
+          button('preview', icon.eye, showPreview ? 'Hide live preview' : 'Show live preview', showPreview ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white/10 hover:bg-white/20') +
+          button('discard', icon.trash, 'Discard recording')
         : ready
           ? `<span class="w-px h-4.5 bg-white/15"></span>` +
             button('start', `${icon.play}<span>Start</span>`, 'Start recording', 'bg-rose-600 hover:bg-rose-500') +
             button('camera', icon.cam, state.camera ? 'Hide camera' : 'Show camera', state.camera ? 'bg-indigo-500/40 hover:bg-indigo-500/60' : 'bg-white/10 hover:bg-white/20') +
-            button('preview', icon.eye, showPreview ? 'Hide 9:16 live crop' : 'Peek 9:16 live crop', showPreview ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white/10 hover:bg-white/20') +
+            button('preview', icon.eye, showPreview ? 'Hide live preview' : 'Show live preview', showPreview ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white/10 hover:bg-white/20') +
             button('discard', '<span>Cancel</span>', 'Cancel recording')
           : state.status === 'countdown'
             ? button('discard', '<span>Cancel</span>', 'Cancel recording')
@@ -98,22 +105,35 @@ function render(): void {
   root.querySelector('#camera')?.addEventListener('click', () => control('toggleCamera'));
   root.querySelector('#preview')?.addEventListener('click', () => togglePreview());
   root.querySelector('#discard')?.addEventListener('click', () => {
-    if (state.status === 'countdown' || ready || confirmDiscard) {
-      confirmDiscard = false;
+    if (state.status === 'countdown' || ready) {
       control('cancel');
       return;
     }
     confirmDiscard = true;
-    if (confirmTimer !== null) window.clearTimeout(confirmTimer);
-    confirmTimer = window.setTimeout(() => {
-      confirmDiscard = false;
-      render();
-    }, 3000);
+    render();
+  });
+  root.querySelector('#discard-yes')?.addEventListener('click', () => {
+    confirmDiscard = false;
+    control('cancel');
+  });
+  root.querySelector('#discard-no')?.addEventListener('click', () => {
+    confirmDiscard = false;
     render();
   });
   root.querySelector('#collapse')?.addEventListener('click', () => setCollapsed(true));
   root.querySelector('#expand')?.addEventListener('click', () => setCollapsed(false));
+
+  // Confirming moves focus to the safe choice; otherwise keep it where it was
+  const next = confirmDiscard && live ? 'discard-no' : focusedId === 'discard-no' || focusedId === 'discard-yes' ? 'discard' : focusedId;
+  if (next) document.getElementById(next)?.focus();
 }
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && confirmDiscard) {
+    confirmDiscard = false;
+    render();
+  }
+});
 
 function setCollapsed(next: boolean): void {
   collapsed = next;
@@ -139,8 +159,14 @@ reel.onPreviewFrame((dataUrl) => {
 
 reel.onState((s) => {
   const changed = s.status !== state.status || s.camera !== state.camera;
+  const progressed = s.progress !== state.progress;
   state = s;
+  if (state.status !== 'recording' && state.status !== 'paused') confirmDiscard = false;
   if (changed) render();
+  else if (progressed) {
+    const el = document.getElementById('time');
+    if (el && state.status === 'saving') el.textContent = statusLabel();
+  }
 });
 
 void reel.getState().then((s) => {

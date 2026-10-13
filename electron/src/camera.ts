@@ -27,8 +27,38 @@ async function initWebcam(): Promise<void> {
     }
   } catch (err) {
     console.warn('Failed to access camera in desktop bubble:', err);
+    showCameraError(err);
   }
 }
+
+/** Replaces the black circle with a plain explanation and a way forward */
+function showCameraError(err: unknown): void {
+  const name = err instanceof DOMException ? err.name : '';
+  const text =
+    name === 'NotAllowedError' || name === 'SecurityError'
+      ? 'Camera access is blocked'
+      : name === 'NotFoundError' || name === 'OverconstrainedError'
+        ? 'No camera found'
+        : name === 'NotReadableError' || name === 'AbortError'
+          ? 'Camera is in use by another app'
+          : 'Camera unavailable';
+  const box = document.getElementById('cam-error');
+  const label = document.getElementById('cam-error-text');
+  if (label) label.textContent = text;
+  if (box) box.hidden = false;
+  // Windows and macOS both have a settings page for blocked access
+  const settings = document.getElementById('btn-cam-settings');
+  if (settings && name === 'NotAllowedError' && (reel.platform === 'win32' || reel.platform === 'darwin')) settings.hidden = false;
+}
+
+document.getElementById('btn-cam-off')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  reel.camera.close();
+});
+document.getElementById('btn-cam-settings')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  reel.permissions.openSettings('camera');
+});
 
 // Window dragging logic using Pointer Events and capture
 let isDragging = false;
