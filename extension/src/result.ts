@@ -13,15 +13,52 @@ import { deleteRecording, formatTime, loadRecording } from './shared';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string): T => document.getElementById(id) as T;
 
+/** Turns raw engine errors into something a person can act on */
+function friendlyError(err: unknown, what: 'transcribe' | 'export'): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  const lower = raw.toLowerCase();
+  if (/fetch|network|load failed|failed to load|offline|http/.test(lower) && what === 'transcribe') {
+    return 'The speech model could not be downloaded. Check your internet connection and try again.';
+  }
+  if (/memory|allocation|out of/.test(lower)) {
+    return 'Your computer ran out of memory. Close other tabs and try again, or use a shorter recording.';
+  }
+  if (/decode|audio/.test(lower) && what === 'transcribe') {
+    return 'The audio in this recording could not be read, so captions cannot be generated. You can import an SRT or VTT file instead.';
+  }
+  if (/abort|cancel/.test(lower)) return 'It was stopped before finishing.';
+  return what === 'transcribe'
+    ? 'Captions could not be generated. Try again, or import an SRT or VTT file.'
+    : 'The video could not be prepared. Try again, or download the original file instead.';
+}
+
+/** "about 1 min left" from progress 0..1 and a start time; empty while too early to guess */
+function etaText(ratio: number, startedAt: number): string {
+  if (ratio < 0.05) return '';
+  const left = (((Date.now() - startedAt) / ratio) * (1 - ratio)) / 1000;
+  if (left < 5) return ' · almost done';
+  return left < 90 ? ` · about ${Math.round(left)} s left` : ` · about ${Math.ceil(left / 60)} min left`;
+}
+
 async function main(): Promise<void> {
   const id = location.hash.slice(1);
-  const rec = id ? await loadRecording(id) : undefined;
-  if (!rec) {
-    $('title').textContent = 'Recording not found';
-    $('meta').textContent = 'It may have been deleted. Only the five newest recordings are kept.';
-    $('workspace').hidden = true;
+  let rec: Awaited<ReturnType<typeof loadRecording>>;
+  try {
+    rec = id ? await loadRecording(id) : undefined;
+  } catch (err) {
+    console.error(err);
+    $('title').textContent = 'Could not open this recording';
+    $('meta').textContent = 'Your browser blocked access to saved recordings. Reload this page, or record again.';
     return;
   }
+  if (!rec) {
+    $('title').textContent = 'Recording not found';
+    $('meta').textContent =
+      'This recording was deleted, or it was replaced by newer ones (ClipDesk keeps only the 5 newest). Start a new recording from the ClipDesk toolbar button.';
+    $('meta').className = 'text-sm text-slate-300 max-w-md';
+    return;
+  }
+  $('workspace').hidden = false;
 
   const wide = rec.layout === 'widescreen';
   const video = $<HTMLVideoElement>('video');
@@ -52,10 +89,32 @@ async function main(): Promise<void> {
   }
 
   const progressEl = $('progress');
-  const setProgress = (text: string | null) => {
+  const barWrap = $('progress-wrap');
+  const barEl = $<HTMLProgressElement>('progress-bar');
+  const retryBtn = $<HTMLButtonElement>('retry');
+  let retryTask: (() => void) | null = null;
+  /** ratio (0..1) draws the bar; omit it for text-only notices */
+  const setProgress = (text: string | null, ratio?: number) => {
     progressEl.hidden = text === null;
     progressEl.textContent = text ?? '';
+    barWrap.hidden = text === null || ratio === undefined;
+    if (ratio !== undefined) barEl.value = Math.round(ratio * 100);
+    if (text === null || ratio !== undefined) {
+      retryBtn.hidden = true;
+      retryTask = null;
+    }
   };
+  const showFailure = (text: string, retry: () => void) => {
+    setProgress(text);
+    progressEl.className = 'text-xs text-rose-300';
+    retryBtn.hidden = false;
+    retryTask = retry;
+  };
+  retryBtn.addEventListener('click', () => {
+    const t = retryTask;
+    progressEl.className = 'text-xs text-indigo-300';
+    t?.();
+  });
   let busy = false;
 
   // ==========================================
@@ -94,8 +153,9 @@ async function main(): Promise<void> {
     const key = editKey();
     if (rendered?.key === key) return rendered.blob;
     const { convertToMp4 } = await import('../../src/core/mp4Converter');
-    setProgress('Cutting… 0%');
-    const blob = await convertToMp4(rec!.blob, (p) => setProgress(`Cutting… ${Math.round(p * 100)}%`), {
+    const startedAt = Date.now();
+    setProgress('Cutting… 0%', 0);
+    const blob = await convertToMp4(rec!.blob, (p) => setProgress(`Cutting… ${Math.round(p * 100)}%${etaText(p, startedAt)}`, p), {
       ranges: timeline.keptRanges,
       duration
     });
@@ -167,7 +227,7 @@ async function main(): Promise<void> {
     $<HTMLButtonElement>('export-srt').disabled = segments.length === 0;
     if (segments.length === 0) {
       const empty = document.createElement('p');
-      empty.className = 'p-2 text-center text-slate-500 rounded-lg border border-dashed border-white/10';
+      empty.className = 'p-2 text-center text-slate-400 rounded-lg border border-dashed border-white/10';
       empty.textContent = 'No captions yet. Transcribe the recording or import a subtitle file.';
       list.append(empty);
       return;
@@ -178,15 +238,17 @@ async function main(): Promise<void> {
 
       const time = document.createElement('button');
       time.type = 'button';
-      time.className = 'font-mono text-[10px] text-amber-400 shrink-0 cursor-pointer hover:underline';
+      time.className = 'font-mono text-xs text-amber-400 shrink-0 cursor-pointer hover:underline';
       time.textContent = `${seg.startSec.toFixed(1)}s`;
       time.title = 'Jump to this line';
+      time.setAttribute('aria-label', `Jump to ${seg.startSec.toFixed(1)} seconds`);
       time.addEventListener('click', () => {
         video.currentTime = seg.startSec;
       });
 
       const input = document.createElement('input');
       input.value = seg.text;
+      input.setAttribute('aria-label', `Caption text at ${seg.startSec.toFixed(1)} seconds`);
       input.className = 'flex-1 min-w-0 bg-transparent border-b border-transparent focus:border-indigo-400 focus:outline-none px-1';
       input.addEventListener('change', () => {
         const text = input.value.trim();
@@ -201,9 +263,10 @@ async function main(): Promise<void> {
 
       const del = document.createElement('button');
       del.type = 'button';
-      del.className = 'text-slate-500 hover:text-rose-400 px-1 cursor-pointer';
+      del.className = 'text-slate-400 hover:text-rose-400 px-1 cursor-pointer';
       del.textContent = '✕';
       del.title = 'Delete line';
+      del.setAttribute('aria-label', `Delete caption line: ${seg.text}`);
       del.addEventListener('click', () => setSegments(segments.filter((s) => s !== seg)));
 
       row.append(time, input, del);
@@ -217,17 +280,25 @@ async function main(): Promise<void> {
   transcribeBtn.addEventListener('click', async () => {
     transcribeBtn.disabled = true;
     transcribeStatus.hidden = false;
+    transcribeStatus.className = 'text-xs text-slate-300';
     transcribeStatus.textContent = 'Preparing audio…';
+    const startedAt = Date.now();
+    setProgress('Generating captions… preparing audio', 0);
     try {
       const language = $<HTMLSelectElement>('caption-lang').value;
       const result = await CaptionEngine.transcribeWithLocalWhisper({
         blob: rec.blob,
         language,
         model: language === 'en' ? 'Xenova/whisper-tiny.en' : 'Xenova/whisper-tiny',
-        onProgress: ({ status }) => {
+        onProgress: ({ status, progress }) => {
           transcribeStatus.textContent = status;
+          if (typeof progress === 'number' && progress >= 0) {
+            const ratio = Math.min(1, progress / 100);
+            setProgress(`Generating captions… ${Math.round(ratio * 100)}%${etaText(ratio, startedAt)}`, ratio);
+          }
         }
       });
+      setProgress(null);
       if (result.length === 0) {
         transcribeStatus.textContent = 'No speech was found in this recording.';
         return;
@@ -236,7 +307,10 @@ async function main(): Promise<void> {
       transcribeStatus.textContent = `Done: ${result.length} caption lines. Click a line to fix its text.`;
     } catch (err) {
       console.error('Transcription failed:', err);
-      transcribeStatus.textContent = `Transcription failed: ${err instanceof Error ? err.message : String(err)}`;
+      setProgress(null);
+      transcribeStatus.className = 'text-xs text-rose-300';
+      transcribeStatus.textContent = friendlyError(err, 'transcribe');
+      transcribeBtn.textContent = 'Try again';
     } finally {
       transcribeBtn.disabled = false;
     }
@@ -268,28 +342,39 @@ async function main(): Promise<void> {
   const captionsBtn = $<HTMLButtonElement>('download-captions');
   const originalBtn = $<HTMLButtonElement>('download-original');
 
+  const PRIMARY = 'px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-sm font-extrabold cursor-pointer disabled:opacity-40';
+  const SECONDARY = 'px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-sm text-slate-300 cursor-pointer disabled:opacity-40';
+
   function updateButtons() {
     const cut = isCut();
-    downloadBtn.textContent = cut ? `Download cut MP4 (${formatTime(lengthOf(timeline.keptRanges) * 1000)})` : `Download ${ext.toUpperCase()}`;
+    const hasCaptions = toggle.checked && segments.length > 0;
+    const base = cut ? `Download cut MP4 (${formatTime(lengthOf(timeline.keptRanges) * 1000)})` : `Download ${ext.toUpperCase()}`;
+    // One clear primary: with captions on, that is the burned-in version
+    downloadBtn.textContent = hasCaptions ? `${base} without captions` : base;
+    downloadBtn.className = hasCaptions ? SECONDARY : PRIMARY;
+    captionsBtn.className = PRIMARY;
     originalBtn.hidden = !cut;
-    captionsBtn.hidden = !toggle.checked || segments.length === 0;
+    captionsBtn.hidden = !hasCaptions;
     for (const b of [downloadBtn, captionsBtn]) b.disabled = busy;
-    $('format-hint').textContent = cut
-      ? 'Cutting re-encodes the video to MP4 in this tab. Long recordings can take a while.'
-      : ext === 'mp4'
-        ? 'Upload the MP4 straight to Instagram Reels, YouTube Shorts or TikTok.'
-        : 'WebM plays on YouTube and desktop players. Convert to MP4 for the Instagram or TikTok apps.';
+    $('format-hint').textContent = hasCaptions
+      ? 'Download with captions burns the captions into the video (takes as long as the video). The plain download has no captions.'
+      : cut
+        ? 'Cutting re-encodes the video to MP4 in this tab. Long recordings can take a while. Original file is the full recording without your cuts.'
+        : ext === 'mp4'
+          ? 'Upload the MP4 straight to Instagram Reels, YouTube Shorts or TikTok.'
+          : 'WebM plays on YouTube and desktop players. Convert to MP4 for the Instagram or TikTok apps.';
   }
 
   async function run(task: () => Promise<void>) {
     busy = true;
+    progressEl.className = 'text-xs text-indigo-300';
     updateButtons();
     try {
       await task();
       setProgress(null);
     } catch (err) {
       console.error(err);
-      setProgress(`Failed: ${err instanceof Error ? err.message : String(err)}. You can still download the original file.`);
+      showFailure(`${friendlyError(err, 'export')} The original file is still available.`, () => void run(task));
     } finally {
       busy = false;
       updateButtons();
@@ -309,14 +394,15 @@ async function main(): Promise<void> {
       const lines = isCut() ? remapCaptions(segments, timeline.keptRanges) : segments;
       video.pause();
       // Plays the video through once in this tab, so it takes as long as the video
-      setProgress('Adding captions… 0% (keep this tab open)');
+      const startedAt = Date.now();
+      setProgress('Adding captions… 0% (keep this tab open)', 0);
       const burned = await ExportEngine.burnCaptionsToVideo(
         source,
         lines,
         CAPTION_STYLES[styleId],
         settings,
         rec.layout,
-        (p) => setProgress(`Adding captions… ${Math.round(p * 100)}% (keep this tab open)`)
+        (p) => setProgress(`Adding captions… ${Math.round(p * 100)}%${etaText(p, startedAt)} (keep this tab open)`, p)
       );
       ExportEngine.downloadBlob(burned, `clipdesk_${stamp}_captions.${ExportEngine.extensionFor(burned)}`);
     })
@@ -324,15 +410,32 @@ async function main(): Promise<void> {
 
   originalBtn.addEventListener('click', () => ExportEngine.downloadBlob(rec.blob, `clipdesk_${stamp}_original.${ext}`));
 
-  $('delete').addEventListener('click', async () => {
+  // Delete is permanent, so it takes two clicks
+  const deleteBtn = $<HTMLButtonElement>('delete');
+  const DELETE_IDLE = 'px-4 py-2.5 rounded-xl bg-white/5 hover:bg-rose-500/20 text-sm text-slate-300 cursor-pointer';
+  let deleteArmed = 0;
+  deleteBtn.addEventListener('click', async () => {
+    if (!deleteArmed) {
+      deleteBtn.textContent = 'Click again to delete forever';
+      deleteBtn.className = 'px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-sm font-bold cursor-pointer';
+      if (!busy) setProgress('This permanently deletes the recording from this browser. It cannot be undone.');
+      deleteArmed = window.setTimeout(() => {
+        deleteArmed = 0;
+        deleteBtn.textContent = 'Delete recording';
+        deleteBtn.className = DELETE_IDLE;
+        if (!busy) setProgress(null);
+      }, 5000);
+      return;
+    }
+    clearTimeout(deleteArmed);
     await deleteRecording(rec.id);
     timeline.destroy();
     URL.revokeObjectURL(url);
     window.close();
   });
 
+  // No autoplay: a recording that starts talking on open is a surprise
   updateButtons();
-  timeline.togglePlay();
 }
 
 void main();

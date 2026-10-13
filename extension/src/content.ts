@@ -51,7 +51,7 @@ function init(): void {
     .countdown { position: fixed; inset: 0; z-index: 2147483647; display: flex; flex-direction: column; align-items: center;
       justify-content: center; gap: 18px; background: rgba(5, 6, 10, 0.55); color: #fff; }
     .num { font-size: 140px; font-weight: 900; line-height: 1; text-shadow: 0 10px 40px rgba(99,102,241,0.6); }
-    .hint { font-size: 14px; color: #cbd5e1; }
+    .hint { font-size: 14px; color: #e2e8f0; }
   `;
 
   const icon = {
@@ -136,6 +136,9 @@ function init(): void {
     wrap.className = 'countdown';
     const num = document.createElement('div');
     num.className = 'num';
+    wrap.setAttribute('role', 'status');
+    wrap.setAttribute('aria-live', 'polite');
+    wrap.setAttribute('aria-label', 'Recording countdown');
     const hint = document.createElement('div');
     hint.className = 'hint';
     hint.textContent = 'Recording starts soon. Alt+Shift+P pauses, Alt+Shift+S stops.';

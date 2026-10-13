@@ -24,6 +24,7 @@ const FPS = 30;
 const COUNTDOWN_MS = 3000;
 
 const statusEl = document.getElementById('status')!;
+statusEl.setAttribute('role', 'status');
 const detailEl = document.getElementById('detail')!;
 const canvas = document.getElementById('preview') as HTMLCanvasElement;
 
@@ -76,7 +77,10 @@ async function closeSelf(): Promise<void> {
 async function fail(message: string): Promise<void> {
   releaseAll();
   await setState({ ...IDLE_STATE, error: message });
-  show("Couldn't start recording", message);
+  show("Couldn't start recording", `${message} You can close this tab and try again from the ClipDesk button.`);
+  // The recorder tab is pinned in the background; bring it forward so the failure is seen right away
+  const me = await chrome.tabs.getCurrent();
+  if (me?.id !== undefined) await chrome.tabs.update(me.id, { active: true }).catch(() => {});
 }
 
 async function startCamera(): Promise<boolean> {
@@ -87,7 +91,7 @@ async function startCamera(): Promise<boolean> {
     cameraSource = new TrackFrameSource(cameraStream.getVideoTracks()[0]);
     return true;
   } catch {
-    warnings.push('Camera is blocked or unavailable, so the camera bubble is off. Use "Allow camera & mic" in the ClipDesk popup.');
+    warnings.push('Camera is blocked or unavailable, so the camera bubble is off. Open the ClipDesk popup and use "Allow camera & mic", or enable it in the Chrome site settings.');
     return false;
   }
 }
@@ -239,7 +243,7 @@ async function main(): Promise<void> {
     try {
       micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
     } catch {
-      warnings.push('Microphone is blocked or unavailable, so there is no voice-over. Use "Allow camera & mic" in the ClipDesk popup.');
+      warnings.push('Microphone is blocked or unavailable, so there is no voice-over. Open the ClipDesk popup and use "Allow camera & mic", or enable it in the Chrome site settings.');
     }
   }
   webcamConfig.background = config.cameraBackground ?? 'none';

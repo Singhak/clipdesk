@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ReelScreen recorder</title>
+    <title>ClipDesk recorder</title>
   </head>
   <body>
     <main class="min-h-screen flex flex-col items-center justify-center gap-4 p-4 text-center">
       <h1 id="status" class="text-xl font-extrabold">Preparing…</h1>
-      <p id="detail" class="max-w-md text-sm text-slate-400"></p>
-      <canvas id="preview" width="1080" height="1920" aria-label="Live reel preview"></canvas>
-      <p class="max-w-md text-xs text-slate-500">This pinned tab does the recording. Closing it ends the recording.</p>
+      <p id="detail" role="status" class="max-w-md text-sm text-slate-300"></p>
+      <canvas id="preview" width="1080" height="1920" aria-label="Live preview of your recording"></canvas>
+      <p class="max-w-md text-xs text-slate-400">This pinned tab does the recording. Closing it ends the recording.</p>
     </main>
     <script type="module" src="./src/recorder.ts"></script>
   </body>

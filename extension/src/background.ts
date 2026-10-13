@@ -128,8 +128,11 @@ chrome.commands.onCommand.addListener((command) => {
 // Toolbar badge mirrors the recording state
 function paintBadge(s: RecState): void {
   const text = s.status === 'recording' ? 'REC' : s.status === 'paused' ? '❚❚' : s.status === 'countdown' ? '…' : '';
-  void chrome.action.setBadgeText({ text });
+  // A failed start leaves the badge on "!" until the next popup open or dismissal, so it isn't missed
+  const failed = s.status === 'idle' && !!s.error;
+  void chrome.action.setBadgeText({ text: failed ? '!' : text });
   void chrome.action.setBadgeBackgroundColor({ color: s.status === 'paused' ? '#f59e0b' : '#e11d48' });
+  void chrome.action.setTitle({ title: failed ? `ClipDesk: ${s.error}` : 'ClipDesk' });
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
