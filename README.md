@@ -60,7 +60,7 @@ Traditionally, converting widescreen desktop screen recordings into high-convert
   <tr>
     <td width="50%">
       <h3>🎯 Dynamic Cursor Follow & Auto-Zoom</h3>
-      <p>Follows your cursor with frame-rate-independent easing, so motion feels the same at 30, 60 or 144 FPS and on any screen size. Clicks trigger a short zoom punch-in (240 ms in, 750 ms hold, 450 ms out). The desktop app tracks the cursor anywhere on screen; the web app only over its preview, the extension only over Chrome pages.</p>
+      <p>Follows your cursor with frame-rate-independent easing, so motion feels the same at 30, 60 or 144 FPS and on any screen size. Clicks trigger a short zoom punch-in (240 ms in, 750 ms hold, 450 ms out). The desktop app tracks the cursor anywhere on screen, and inside a single captured app window on Windows; the web app only over its own preview (so it cannot follow you into other apps); the extension only over the Chrome pages it records.</p>
     </td>
     <td width="50%">
       <h3>🎙️ Studio Voice DSP Enhancer</h3>
@@ -209,8 +209,10 @@ ClipDesk comes in three specialized versions sharing the exact same core renderi
 | :--- | :---: | :---: | :---: |
 | **Installation Required** | None (instant web URL) | Load Unpacked in Chrome | Native Installer (Windows .exe; macOS/Linux builds not shipped yet) |
 | **Display Aspect Ratio** | 9:16 Vertical & 16:9 | 9:16 Vertical & 16:9 | 9:16 Vertical & 16:9 |
-| **Cursor Tracking Scope** | Inside Preview Window | Any Chrome Web Page | **Entire Desktop & Any Native App** |
-| **Mouse Click Tracking** | DOM Click Events | Browser Event Listener | **Global OS Hook (`uiohook-napi`)** |
+| **Cursor Tracking Scope** | Inside Preview Window only | Any Chrome Web Page | **Entire Desktop & Any Native App** |
+| **Window Capture Tracking** | ❌ None (the browser cannot see the cursor outside its tab) | Page being recorded | **✅ Windows: reads the window's position, so follow and click zoom work inside one app** (macOS/Linux: screen capture only) |
+| **Mouse Click Tracking** | Clicks on the preview only | Browser Event Listener | **Global OS Hook (`uiohook-napi`)** |
+| **Cursor Follow & Click Zoom While Recording Other Apps** | ❌ No | ❌ No (Chrome pages only) | **✅ Yes** |
 | **Floating Controls UI** | Document PiP Window | Shadow DOM Injected Bar | **Always-On-Top Native Transparent Window** |
 | **UI Hidden From Video** | ✅ Yes | *(Turn off the in-page bar; use the popup or shortcuts)* | **✅ Yes (`setWindowContentProtection`)** |
 | **Desktop System Audio** | Browser Prompt Share | Tab Audio Capture | **Native Loopback System Audio (Win)** |
@@ -228,7 +230,8 @@ ClipDesk comes in three specialized versions sharing the exact same core renderi
 WtoR/
 ├── .github/                   # CI/CD and repository workflows
 ├── .gitignore                 # Excludes node_modules, build artifacts, logs
-├── index.html                 # Web Studio entry point
+├── app/index.html             # Web Studio entry point (served at /app/)
+├── public/index.html          # Marketing landing page (served at /)
 ├── package.json               # Project manifest, dependencies, and build scripts
 ├── tsconfig.json              # TypeScript compilation rules
 ├── README.md                  # Comprehensive interactive project documentation
@@ -483,6 +486,11 @@ npm run build
 ---
 
 ## 🛠️ Troubleshooting & OS Permissions
+
+### Camera doesn't follow the cursor or zoom on clicks
+- **Web app:** expected. A browser page cannot see the mouse once you leave its tab, so follow and click zoom only react over ClipDesk's own preview. Use the desktop app or the extension to record other apps.
+- **Desktop app, window capture (Windows):** a small hidden PowerShell process reads the window's position and your cursor. Cursor and click events are written to `%APPDATA%\clipdesk\logs\clipdesk.log` ("Window cursor tracking is reporting", "Click ignored"). Window capture on macOS and Linux has no cursor tracking, so record the whole screen there.
+- **Widescreen (16:9) layout:** click zoom is off by default; turn on "Zoom on click" in the launcher.
 
 ### macOS Permissions
 macOS requires explicit system-level permissions for screen recording and input monitoring:

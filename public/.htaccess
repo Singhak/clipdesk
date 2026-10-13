@@ -3,10 +3,14 @@ RewriteEngine On
 RewriteCond %{HTTPS} off
 RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
-# Single-page app fallback
+# Stable download link used by the landing page.
+# When you ship a new version, change only this line (or point it at a GitHub release).
+RewriteRule ^download/windows$ /downloads/ClipDesk-Setup-1.0.0.exe [R=302,L]
+
+# The web app is a single-page app served from /app/
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^ index.html [L]
+RewriteRule ^app/ /app/index.html [L]
 
 # Allow screen capture on this origin
 <IfModule mod_headers.c>

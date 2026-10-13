@@ -11,6 +11,8 @@ export default defineConfig({
   worker: { format: 'es' },
   // Pre-bundling rewrites ffmpeg.wasm's internal worker URL and conversions then never start in dev
   optimizeDeps: { exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util'] },
+  // The web app lives at /app/; public/index.html is the static landing page at /
+  build: { rollupOptions: { input: 'app/index.html' } },
   server: {
     port: 5173,
     host: true,
