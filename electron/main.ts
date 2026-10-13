@@ -15,6 +15,7 @@ import {
   systemPreferences,
   Tray
 } from 'electron';
+import { spawn, ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import {
@@ -354,8 +355,8 @@ async function startRecording(next: DesktopConfig): Promise<void> {
     status: 'starting',
     error: undefined,
     camera: config.camera,
-    cursorTracking: kind === 'screen',
-    clickTracking: kind === 'screen' && loadHook() !== null
+    cursorTracking: kind === 'screen' || windowHandle(source.id) !== null,
+    clickTracking: (kind === 'screen' || windowHandle(source.id) !== null) && loadHook() !== null
   });
 
   recorder = new BrowserWindow({
@@ -404,8 +405,93 @@ function installCaptureHandlers(): void {
 let pointerTimer: NodeJS.Timeout | null = null;
 let lastPointer = '';
 
+/** Windows only: the native window handle behind a window capture source ("window:<hwnd>:0") */
+function windowHandle(sourceId: string): string | null {
+  if (process.platform !== 'win32') return null;
+  return /^window:(\d+):/.exec(sourceId)?.[1] ?? null;
+}
+
+let windowProbe: ChildProcess | null = null;
+let windowPointer: { x: number; y: number } | null = null;
+let windowPointerAt = 0;
+let lastWindowPoint: { x: number; y: number } | null = null;
+let probeLogged = false;
+
+/**
+ * Electron can't see where another app's window is, so a small PowerShell loop reads the window
+ * rectangle and the cursor in physical pixels and reports the cursor as 0..1 inside the window.
+ */
+function startWindowProbe(hwnd: string): void {
+  stopWindowProbe();
+  const script = `
+Add-Type -Namespace W -Name U -MemberDefinition '
+[DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+[DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
+[DllImport("user32.dll")] public static extern bool GetCursorPos(out POINT p);
+[DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr h, int attr, out RECT r, int size);
+[StructLayout(LayoutKind.Sequential)] public struct RECT { public int L, T, R, B; }
+[StructLayout(LayoutKind.Sequential)] public struct POINT { public int X, Y; }'
+[void][W.U]::SetProcessDPIAware()
+$h = [IntPtr]::new([long]${hwnd})
+$inv = [Globalization.CultureInfo]::InvariantCulture
+while ($true) {
+  $r = New-Object 'W.U+RECT'; $p = New-Object 'W.U+POINT'
+  $out = '-'
+  # Visible frame (what the capture shows), without the invisible resize borders GetWindowRect adds
+  $ok = [W.U]::DwmGetWindowAttribute($h, 9, [ref]$r, 16) -eq 0
+  if (-not $ok) { $ok = [W.U]::GetWindowRect($h, [ref]$r) }
+  if ($ok -and [W.U]::GetCursorPos([ref]$p)) {
+    $w = $r.R - $r.L; $ht = $r.B - $r.T
+    if ($w -gt 0 -and $ht -gt 0) {
+      $nx = ($p.X - $r.L) / $w; $ny = ($p.Y - $r.T) / $ht
+      if ($nx -ge 0 -and $nx -le 1 -and $ny -ge 0 -and $ny -le 1) { $out = $nx.ToString('F4', $inv) + ' ' + $ny.ToString('F4', $inv) }
+    }
+  }
+  [Console]::Out.WriteLine($out); [Console]::Out.Flush()
+  Start-Sleep -Milliseconds 15
+}`;
+  try {
+    const child = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')],
+      { windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] }
+    );
+    let buffered = '';
+    child.stdout?.on('data', (chunk: Buffer) => {
+      buffered += chunk.toString();
+      const lines = buffered.split(/\r?\n/);
+      buffered = lines.pop() ?? '';
+      const last = lines[lines.length - 1];
+      if (last === undefined) return;
+      const [x, y] = last.trim().split(' ').map(Number);
+      windowPointer = last.trim() === '-' || !Number.isFinite(x) || !Number.isFinite(y) ? null : { x, y };
+      if (windowPointer) {
+        windowPointerAt = Date.now();
+        lastWindowPoint = windowPointer;
+      }
+      if (!probeLogged) {
+        probeLogged = true;
+        log('info', 'main', `Window cursor tracking is reporting (first sample: ${last.trim()})`);
+      }
+    });
+    child.on('error', (e) => report('warn', 'Window cursor tracking could not start.', e));
+    windowProbe = child;
+  } catch (e) {
+    report('warn', 'Window cursor tracking could not start.', e);
+  }
+}
+
+function stopWindowProbe(): void {
+  windowProbe?.kill();
+  windowProbe = null;
+  windowPointer = null;
+  probeLogged = false;
+}
+
 function normalizedPointer(): { x: number; y: number } | null {
-  if (!capture || capture.kind !== 'screen') return null;
+  if (!capture) return null;
+  // A click on the very edge of the window can read as "just outside"; keep using the last position briefly
+  if (capture.kind === 'window') return windowPointer ?? (Date.now() - windowPointerAt < 400 ? lastWindowPoint : null);
   const point = screen.getCursorScreenPoint();
   const b = targetDisplay().bounds;
   const x = (point.x - b.x) / b.width;
@@ -442,6 +528,7 @@ function loadHook(): Hook | null {
       if (e.button !== 1 || state.status !== 'recording' || overOwnOverlay()) return;
       const p = normalizedPointer();
       if (p) sendPointer({ ...p, click: true });
+      else if (capture?.kind === 'window') log('info', 'main', 'Click ignored: the cursor was not over the captured window');
     });
   } catch (e) {
     report('warn', 'Global mouse hook unavailable; click zoom is off.', e);
@@ -451,7 +538,12 @@ function loadHook(): Hook | null {
 }
 
 function startTracking(): void {
-  if (!capture || capture.kind !== 'screen') return;
+  if (!capture) return;
+  if (capture.kind === 'window') {
+    const hwnd = windowHandle(capture.sourceId);
+    if (!hwnd) return;
+    if (!windowProbe) startWindowProbe(hwnd);
+  }
   if (!pointerTimer) {
     pointerTimer = setInterval(() => {
       const p = normalizedPointer();
@@ -473,6 +565,7 @@ function startTracking(): void {
 }
 
 function stopTracking(): void {
+  stopWindowProbe();
   if (pointerTimer) clearInterval(pointerTimer);
   pointerTimer = null;
   lastPointer = '';
