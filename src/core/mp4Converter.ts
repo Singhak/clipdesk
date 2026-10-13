@@ -14,9 +14,13 @@ async function loadFFmpeg(): Promise<FFmpeg> {
         import('@ffmpeg/core/wasm?url')
       ]);
       const ff = new FFmpeg();
+      // Extension pages only allow scripts from the extension itself, so the bundled core is loaded
+      // from its own URL there; on the web it's wrapped in blob URLs as ffmpeg.wasm recommends
+      const inExtension = location.protocol === 'chrome-extension:';
+      const own = (u: string) => new URL(u, location.href).href;
       await ff.load({
-        coreURL: await toBlobURL(coreJs.default, 'text/javascript'),
-        wasmURL: await toBlobURL(coreWasm.default, 'application/wasm')
+        coreURL: inExtension ? own(coreJs.default) : await toBlobURL(coreJs.default, 'text/javascript'),
+        wasmURL: inExtension ? own(coreWasm.default) : await toBlobURL(coreWasm.default, 'application/wasm')
       });
       return ff;
     })().catch((e) => {

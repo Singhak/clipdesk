@@ -680,7 +680,17 @@ export class CaptionEngine {
           i++;
         }
 
-        const text = textLines.join(' ');
+        // Drop markup such as <i>, <b>, <font> (SRT) and <v Speaker>, <c.class>, <00:01.500> (VTT) so
+        // it isn't burned into the video as text
+        const text = textLines
+          .join(' ')
+          .replace(/<[^>]*>/g, '')
+          .replace(/&lt;/g, '<')
+          .replace(/&gt;/g, '>')
+          .replace(/&nbsp;/g, ' ')
+          .replace(/&amp;/g, '&')
+          .replace(/\s+/g, ' ')
+          .trim();
         if (text) {
           const wordsRaw = text.split(/\s+/).filter(Boolean);
           const step = Math.max(0.1, (endSec - startSec) / Math.max(1, wordsRaw.length));

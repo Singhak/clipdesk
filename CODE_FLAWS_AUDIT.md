@@ -1,5 +1,8 @@
 # Code Quality & Architectural Flaws Audit
 
+> **Status (October 2026): all items below are fixed.** For example, the noise gate now runs on a worker ticker, and the input `MediaStream` is held on the processor. Run `npx vite-node scripts/verify-audit.ts` to re-check them. The line numbers and code excerpts below refer to the old code.
+
+
 This document details all discovered runtime bugs, architectural limitations, memory leaks, and browser compatibility flaws across the core processing pipeline of the ClipDesk (WtoR) codebase, with primary focus on [`src/core/voiceProcessor.ts`](file:///d:/Hostiger_Deployment/WtoR/src/core/voiceProcessor.ts) and connected core modules ([`src/core/audioMixer.ts`](file:///d:/Hostiger_Deployment/WtoR/src/core/audioMixer.ts), [`src/core/exportEngine.ts`](file:///d:/Hostiger_Deployment/WtoR/src/core/exportEngine.ts), [`src/core/layoutAgent.ts`](file:///d:/Hostiger_Deployment/WtoR/src/core/layoutAgent.ts), and [`src/core/templateManager.ts`](file:///d:/Hostiger_Deployment/WtoR/src/core/templateManager.ts)).
 
 ---

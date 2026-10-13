@@ -94,7 +94,7 @@ Traditionally, converting widescreen desktop screen recordings into high-convert
     </td>
     <td width="50%">
       <h3>🔒 100% Private & Local-First</h3>
-      <p>Zero cloud uploads, zero telemetry, and zero backend servers. All compositing, on-device Whisper transcription, and FFmpeg MP4 encoding execute completely on your device.</p>
+      <p>No telemetry, and your recordings are never uploaded. All compositing, on-device Whisper transcription and FFmpeg MP4 encoding run on your device. Audio only leaves the device if you choose Groq or OpenAI captions with your own key. The only server is the optional licensing server (<code>server/</code>), which sees your license key and a device ID, never your videos.</p>
     </td>
   </tr>
   <tr>
@@ -212,10 +212,11 @@ ClipDesk comes in three specialized versions sharing the exact same core renderi
 | **Cursor Tracking Scope** | Inside Preview Window | Any Chrome Web Page | **Entire Desktop & Any Native App** |
 | **Mouse Click Tracking** | DOM Click Events | Browser Event Listener | **Global OS Hook (`uiohook-napi`)** |
 | **Floating Controls UI** | Document PiP Window | Shadow DOM Injected Bar | **Always-On-Top Native Transparent Window** |
-| **UI Hidden From Video** | ✅ Yes | *(Must minimize bar)* | **✅ Yes (`setWindowContentProtection`)** |
+| **UI Hidden From Video** | ✅ Yes | *(Turn off the in-page bar; use the popup or shortcuts)* | **✅ Yes (`setWindowContentProtection`)** |
 | **Desktop System Audio** | Browser Prompt Share | Tab Audio Capture | **Native Loopback System Audio (Win)** |
 | **Offline Transcoding** | In-Browser WebAssembly | In-Browser WebAssembly | **Bundled Local Static FFmpeg** |
-| **Cut & Trim Editor (with Undo)** | ✅ Cut on export (ffmpeg.wasm) | ❌ Download only | **✅ Saves an editable `(edited)` copy** |
+| **Cut & Trim Editor (with Undo)** | ✅ Cut on export (ffmpeg.wasm) | ✅ Cut on download (ffmpeg.wasm) | **✅ Saves an editable `(edited)` copy** |
+| **Captions (on-device Whisper, SRT/VTT)** | ✅ Plus Groq / OpenAI | ✅ Burned in during a real-time pass | **✅ Burned in with native FFmpeg** |
 | **Auto-Update & Crash Logs** | — (always latest) | Via Chrome Web Store once published | **✅ GitHub Releases + local logs** |
 | **Recording Save Target** | Browser Download | Browser Download | **Direct to `Videos/ClipDesk` folder** |
 
@@ -297,7 +298,7 @@ WtoR/
 │       ├── content.ts         # Injected shadow-DOM floating controls bar
 │       ├── popup.tsx          # React popup setup wizard
 │       ├── recorder.ts        # Background tab capture & stream compositing
-│       ├── result.ts          # Download and review handlers
+│       ├── result.ts          # Result page: cut editor, captions, download
 │       └── shared.ts          # Extension IPC message contracts & IndexedDB storage
 │
 ├── electron/                  # 💻 Electron Desktop Application
@@ -438,7 +439,7 @@ ClipDesk features built-in shortcuts accessible during active recording:
 | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd> | Global (Desktop) / In-Tab | **Stop & Export** | Finalizes the take and opens export review |
 | <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>D</kbd> | Web Studio | **Toggle Pen** | Activates the live telestrator drawing tool |
 
-The cut editor (web export screen and desktop result window) has its own keys. They are ignored while you type in a text field:
+The cut editor (web export screen, extension result page and desktop result window) has its own keys. They are ignored while you type in a text field:
 
 | Shortcut | Action |
 | :--- | :--- |

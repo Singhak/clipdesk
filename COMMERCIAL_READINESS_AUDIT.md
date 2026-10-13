@@ -1,5 +1,16 @@
 # 🎬 ClipDesk: Market Scope, User Experience & Commercial Sellability Audit
 
+> **Status (October 2026): historical.** This audit describes an earlier build. Since then:
+> - **3.2 Mirror shield:** now off by default.
+> - **3.3 Background tab audio:** the noise gate and renderers run on worker timers, so hidden tabs keep recording.
+> - **3.4 Placeholder captions:** captions start empty. They come from on-device Whisper, Groq/OpenAI or an SRT/VTT import.
+> - **3.5 Audible caption burning:** the burn pass no longer plays through the speakers. The desktop app burns captions with native FFmpeg.
+> - **3.6 Cloud share URL:** removed.
+> - The Chrome extension now has the cut editor and captions too.
+>
+> **Still open:** 3.1. The web studio can only follow the cursor inside its own preview, because browsers don't expose the pointer outside the tab. Use the desktop app or the extension for cursor follow. `scripts/verify-audit.ts` re-checks the code-level fixes. The score and the "do not sell" verdict below are out of date.
+
+
 **Document Version:** 1.0.0  
 **Status:** Alpha / Interactive Tech Demo  
 **Commercial Readiness Score:** **3.5 / 10**  

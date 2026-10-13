@@ -29,6 +29,49 @@ describe('SRT round trip', () => {
   });
 });
 
+describe('parseSrtOrVtt', () => {
+  it('reads WebVTT with short timestamps, cue settings and NOTE blocks', () => {
+    const vtt = [
+      'WEBVTT',
+      '',
+      'NOTE written by hand',
+      '',
+      '00:01.000 --> 00:03.500 align:start position:10%',
+      'First line',
+      '',
+      'intro',
+      '01:00:02.250 --> 01:00:04.000',
+      'Second line'
+    ].join('\n');
+    const parsed = CaptionEngine.parseSrtOrVtt(vtt);
+    expect(parsed.map((s) => s.text)).toEqual(['First line', 'Second line']);
+    expect(parsed[0].startSec).toBeCloseTo(1);
+    expect(parsed[0].endSec).toBeCloseTo(3.5);
+    expect(parsed[1].startSec).toBeCloseTo(3602.25);
+  });
+
+  it('strips formatting tags and decodes entities instead of burning them in', () => {
+    const srt = [
+      '1',
+      '00:00:00,000 --> 00:00:02,000',
+      '<i>Hello</i> <font color="#ff0">there</font>',
+      '',
+      '2',
+      '00:00:02,000 --> 00:00:04,000',
+      '<v Roger>Fish &amp; chips</v> <00:00:03.000><c.yellow>now</c>'
+    ].join('\n');
+    const parsed = CaptionEngine.parseSrtOrVtt(srt);
+    expect(parsed.map((s) => s.text)).toEqual(['Hello there', 'Fish & chips now']);
+    expect(parsed[1].words.map((w) => w.word)).toEqual(['Fish', '&', 'chips', 'now']);
+  });
+
+  it('keeps multi-line cues as one caption', () => {
+    const parsed = CaptionEngine.parseSrtOrVtt('1\n00:00:00,000 --> 00:00:02,000\nTop line\nbottom line\n');
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].text).toBe('Top line bottom line');
+  });
+});
+
 describe('generateSegmentsFromText', () => {
   it('splits a paragraph into sentences that fit the video', () => {
     const out = generateSegmentsFromText('First line. Second line! Third?', 12);

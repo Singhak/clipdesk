@@ -30,6 +30,14 @@ async function getPipeline(model: string): Promise<Pipeline> {
       const { pipeline, env } = await import('@xenova/transformers');
       env.allowLocalModels = false;
       env.useBrowserCache = true;
+      // Chrome extensions may not run code fetched from elsewhere, so the extension uses its own copy
+      // of the ONNX runtime instead of the CDN one. Extension pages aren't cross-origin isolated, so
+      // the single-threaded SIMD build is the one that loads.
+      if (ctx.location.protocol === 'chrome-extension:' && env.backends.onnx.wasm) {
+        const { default: simd } = await import('onnxruntime-web/dist/ort-wasm-simd.wasm?url');
+        env.backends.onnx.wasm.wasmPaths = { 'ort-wasm-simd.wasm': new URL(simd, ctx.location.href).href };
+        env.backends.onnx.wasm.numThreads = 1;
+      }
       return pipeline('automatic-speech-recognition', model, {
         quantized: true,
         progress_callback: (info: { status?: string; progress?: number; file?: string }) => {

@@ -6,16 +6,71 @@
     <title>ReelScreen recording</title>
   </head>
   <body>
-    <main class="min-h-screen flex flex-col items-center justify-center gap-4 p-4 text-center">
-      <h1 id="title" class="text-2xl font-black">Loading…</h1>
+    <main class="min-h-screen flex flex-col items-center gap-4 p-4 text-center">
+      <h1 id="title" class="text-2xl font-black mt-4">Loading…</h1>
       <p id="meta" class="text-sm text-slate-400 font-mono"></p>
       <div id="notes" role="alert" hidden class="max-w-md p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200"></div>
-      <video id="video" controls autoplay loop playsinline class="preview-video"></video>
-      <div id="actions" class="flex gap-2">
-        <button id="download" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-sm font-extrabold cursor-pointer">Download</button>
-        <button id="delete" class="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-sm text-slate-300 cursor-pointer">Delete</button>
+
+      <div id="workspace" class="flex flex-wrap items-start justify-center gap-5 w-full">
+        <div class="preview-wrap">
+          <video id="video" playsinline class="preview-video"></video>
+          <canvas id="captions-layer" class="captions-layer" aria-hidden="true"></canvas>
+        </div>
+
+        <div id="editor" class="w-full max-w-md flex flex-col gap-4 text-left">
+          <!-- Cut editor -->
+          <section class="p-4 rounded-2xl bg-white/[0.03] border border-indigo-500/20 space-y-3">
+            <div class="flex items-baseline gap-2">
+              <h2 class="text-xs font-bold">Cut &amp; Trim</h2>
+              <span class="text-[10px] text-slate-400">Drag over any part, then Delete. Ctrl+Z undoes.</span>
+            </div>
+            <div id="cut-editor"></div>
+          </section>
+
+          <!-- Captions -->
+          <section class="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-3">
+            <div class="flex items-center justify-between gap-2">
+              <h2 class="text-xs font-bold">Captions</h2>
+              <label class="flex items-center gap-1.5 text-[11px] text-slate-300 cursor-pointer">
+                <input id="captions-toggle" type="checkbox" class="accent-indigo-500" /> Show
+              </label>
+            </div>
+            <div class="flex flex-wrap gap-2 items-center">
+              <select id="caption-lang" class="text-[11px] bg-black/40 border border-white/10 rounded-lg px-2 py-1">
+                <option value="en">English</option>
+                <option value="auto">Other / auto-detect</option>
+              </select>
+              <button id="transcribe" class="px-3 py-1 text-[11px] font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 cursor-pointer disabled:opacity-40">Transcribe on this device</button>
+              <label class="px-3 py-1 text-[11px] rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 cursor-pointer">
+                Import SRT/VTT<input id="import-srt" type="file" accept=".srt,.vtt" hidden />
+              </label>
+              <button id="export-srt" class="px-3 py-1 text-[11px] rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 cursor-pointer disabled:opacity-40" disabled>Save SRT</button>
+            </div>
+            <p id="transcribe-status" class="text-[11px] text-slate-400" hidden></p>
+            <label class="flex items-center gap-2 text-[11px] text-slate-300">
+              Style
+              <select id="caption-style" class="flex-1 bg-black/40 border border-white/10 rounded-lg px-2 py-1"></select>
+            </label>
+            <label class="flex items-center gap-2 text-[11px] text-slate-300">
+              Position
+              <input id="caption-pos" type="range" min="0.1" max="0.9" step="0.01" class="flex-1 accent-indigo-500" />
+            </label>
+            <div id="segments" class="max-h-56 overflow-y-auto space-y-1 text-xs"></div>
+          </section>
+
+          <!-- Export -->
+          <section id="actions" class="p-4 rounded-2xl bg-white/[0.03] border border-white/10 space-y-2">
+            <div class="flex flex-wrap gap-2">
+              <button id="download" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-sm font-extrabold cursor-pointer disabled:opacity-40">Download</button>
+              <button id="download-captions" hidden class="px-4 py-2.5 rounded-xl bg-amber-500/90 hover:bg-amber-400 text-black text-sm font-extrabold cursor-pointer disabled:opacity-40">Download with captions</button>
+              <button id="download-original" hidden class="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-sm text-slate-300 cursor-pointer">Original file</button>
+              <button id="delete" class="px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-sm text-slate-300 cursor-pointer">Delete</button>
+            </div>
+            <p id="progress" class="text-xs text-indigo-300" hidden></p>
+            <p id="format-hint" class="text-xs text-slate-500"></p>
+          </section>
+        </div>
       </div>
-      <p id="format-hint" class="text-xs text-slate-500"></p>
     </main>
     <script type="module" src="./src/result.ts"></script>
   </body>
