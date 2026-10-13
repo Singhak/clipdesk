@@ -6,6 +6,8 @@ import tailwindcss from '@tailwindcss/vite';
 // Desktop app pages (launcher, recorder, controls, countdown, result). The main process and preload
 // are built by vite.electron-main.config.ts.
 export default defineConfig({
+  // Compile-time flag: only the Chrome extension bundles its own ONNX runtime (see whisper.worker.ts)
+  define: { __EXTENSION_BUILD__: "false" },
   root: resolve(__dirname, 'electron'),
   base: './',
   publicDir: resolve(__dirname, 'electron/public'),

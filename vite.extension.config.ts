@@ -6,6 +6,8 @@ import tailwindcss from '@tailwindcss/vite';
 // Chrome extension pages and service worker. The content script is a classic script and is built
 // separately by vite.content.config.ts.
 export default defineConfig({
+  // Compile-time flag: only the Chrome extension bundles its own ONNX runtime (see whisper.worker.ts)
+  define: { __EXTENSION_BUILD__: "true" },
   root: resolve(__dirname, 'extension'),
   base: './',
   publicDir: resolve(__dirname, 'extension/public'),

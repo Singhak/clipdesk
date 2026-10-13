@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
+  // Compile-time flag: only the Chrome extension bundles its own ONNX runtime (see whisper.worker.ts)
+  define: { __EXTENSION_BUILD__: "false" },
   base: './',
   plugins: [tailwindcss(), react()],
   // The Whisper worker lazy-loads Transformers.js; only ES module workers can code-split
