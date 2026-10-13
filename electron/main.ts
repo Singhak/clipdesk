@@ -248,23 +248,29 @@ function setState(patch: Partial<RecState>): void {
   const prevCamera = state.camera;
   state = { ...state, ...patch };
   if (state.status !== prev) onStatusChange(prev);
-  if (state.camera !== prevCamera && (state.status === 'recording' || state.status === 'paused' || state.status === 'countdown')) {
+  if (state.camera !== prevCamera && isCapturing(state.status)) {
     if (state.camera) showCameraBubble();
     else hideCameraBubble();
   }
   broadcast();
 }
 
+/** Screen capture is live: the bubble, cursor tracking and shortcuts are in play */
+function isCapturing(s: RecState['status']): boolean {
+  return s === 'ready' || s === 'countdown' || s === 'recording' || s === 'paused';
+}
+
 function onStatusChange(prev: RecState['status']): void {
   const s = state.status;
-  if (s === 'countdown') {
+  // The countdown window doubles as the "place your camera, then Start" panel
+  if (s === 'ready' || s === 'countdown') {
     showCountdown();
     showControls();
     if (state.camera) showCameraBubble();
   } else {
     closeWindow(countdown);
   }
-  if (s === 'recording' || s === 'paused' || s === 'countdown') {
+  if (isCapturing(s)) {
     startTracking();
     registerShortcuts();
     if (state.camera) showCameraBubble();
@@ -481,6 +487,13 @@ function refreshTray(): void {
   tray.setToolTip(label);
   tray.setContextMenu(
     Menu.buildFromTemplate([
+      ...(state.status === 'ready'
+        ? [
+            { label: 'Start recording', click: () => sendControl('start') },
+            { label: 'Cancel', click: () => sendControl('cancel') },
+            { type: 'separator' as const }
+          ]
+        : []),
       ...(recording
         ? [
             { label: state.status === 'paused' ? 'Resume  (Alt+Shift+P)' : 'Pause  (Alt+Shift+P)', click: () => sendControl('togglePause') },

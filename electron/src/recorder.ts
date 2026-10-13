@@ -29,6 +29,8 @@ let compositor: ReelCompositor | null = null;
 let recorder: ReturnType<typeof ExportEngine.startRecordingCanvas> | null = null;
 let stopRender: (() => void) | null = null;
 let finishing = false;
+/** Ends the 'ready' wait (Start pressed, or the take was cancelled) */
+let startNow: (() => void) | null = null;
 const warnings: string[] = [];
 /** Chunks are written to disk one after another; this is the tail of that chain */
 let diskWrites: Promise<void> = Promise.resolve();
@@ -142,6 +144,7 @@ async function toggleCamera(): Promise<void> {
 async function finish(save: boolean): Promise<void> {
   if (finishing) return;
   finishing = true;
+  startNow?.();
   const timerMs = elapsedMs(state);
   if (!recorder || !save) {
     if (recorder) await recorder.stop().catch(() => undefined);
@@ -176,6 +179,7 @@ function onControl(action: ControlAction): void {
   else if (action === 'stop') void finish(true);
   else if (action === 'cancel') void finish(false);
   else if (action === 'toggleCamera') void toggleCamera();
+  else if (action === 'start') startNow?.();
 }
 
 async function main(): Promise<void> {
@@ -269,6 +273,14 @@ async function main(): Promise<void> {
 
   // A closed window or unplugged monitor ends the capture: save what we have
   screenStream.getVideoTracks()[0].addEventListener('ended', () => void finish(true));
+
+  // With the camera on, wait for Start so the bubble can be moved, resized or flipped before the take
+  if (webcamConfig.enabled) {
+    setState({ status: 'ready', camera: true });
+    await new Promise<void>((resolve) => (startNow = resolve));
+    startNow = null;
+    if (finishing) return;
+  }
 
   setState({ status: 'countdown', countdownEndsAt: Date.now() + COUNTDOWN_MS, camera: webcamConfig.enabled });
   await new Promise((r) => setTimeout(r, COUNTDOWN_MS));

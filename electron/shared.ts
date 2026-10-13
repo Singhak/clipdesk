@@ -41,7 +41,8 @@ export interface SourceInfo {
   appIcon?: string;
 }
 
-export type RecStatus = 'idle' | 'starting' | 'countdown' | 'recording' | 'paused' | 'saving';
+// 'ready' holds a camera take before the countdown so the bubble can be placed first
+export type RecStatus = 'idle' | 'starting' | 'ready' | 'countdown' | 'recording' | 'paused' | 'saving';
 
 export interface RecState {
   status: RecStatus;
@@ -67,7 +68,7 @@ export const IDLE_STATE: RecState = {
   clickTracking: false
 };
 
-export type ControlAction = 'togglePause' | 'pause' | 'resume' | 'stop' | 'cancel' | 'toggleCamera';
+export type ControlAction = 'start' | 'togglePause' | 'pause' | 'resume' | 'stop' | 'cancel' | 'toggleCamera';
 
 /** Pointer position normalized to the captured screen (0..1) */
 export interface PointerSample {

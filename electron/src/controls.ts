@@ -49,7 +49,14 @@ function render(): void {
   const paused = state.status === 'paused';
   const live = state.status === 'recording' || paused;
   const saving = state.status === 'saving';
-  const status = saving ? 'Saving…' : state.status === 'countdown' || state.status === 'starting' ? 'Get ready' : '';
+  const ready = state.status === 'ready';
+  const status = saving
+    ? 'Saving…'
+    : ready
+      ? 'Set up'
+      : state.status === 'countdown' || state.status === 'starting'
+        ? 'Get ready'
+        : '';
 
   const head = `
     <span class="drag px-1 text-indigo-400 text-sm tracking-[-2px] cursor-grab" title="Drag to move">⋮⋮</span>
@@ -73,18 +80,25 @@ function render(): void {
             confirmDiscard ? 'Click again to discard' : 'Discard recording',
             confirmDiscard ? 'bg-rose-500/30 text-rose-100' : 'bg-white/10 hover:bg-white/20'
           )
-        : state.status === 'countdown'
-          ? button('discard', '<span>Cancel</span>', 'Cancel recording')
-          : '') +
+        : ready
+          ? `<span class="w-px h-4.5 bg-white/15"></span>` +
+            button('start', `${icon.play}<span>Start</span>`, 'Start recording', 'bg-rose-600 hover:bg-rose-500') +
+            button('camera', icon.cam, state.camera ? 'Hide camera' : 'Show camera', state.camera ? 'bg-indigo-500/40 hover:bg-indigo-500/60' : 'bg-white/10 hover:bg-white/20') +
+            button('preview', icon.eye, showPreview ? 'Hide 9:16 live crop' : 'Peek 9:16 live crop', showPreview ? 'bg-indigo-600 text-white shadow-sm' : 'bg-white/10 hover:bg-white/20') +
+            button('discard', '<span>Cancel</span>', 'Cancel recording')
+          : state.status === 'countdown'
+            ? button('discard', '<span>Cancel</span>', 'Cancel recording')
+            : '') +
       (saving ? '' : button('collapse', icon.min, 'Minimize controls'));
   }
 
   root.querySelector('#pause')?.addEventListener('click', () => control('togglePause'));
+  root.querySelector('#start')?.addEventListener('click', () => control('start'));
   root.querySelector('#stop')?.addEventListener('click', () => control('stop'));
   root.querySelector('#camera')?.addEventListener('click', () => control('toggleCamera'));
   root.querySelector('#preview')?.addEventListener('click', () => togglePreview());
   root.querySelector('#discard')?.addEventListener('click', () => {
-    if (state.status === 'countdown' || confirmDiscard) {
+    if (state.status === 'countdown' || ready || confirmDiscard) {
       confirmDiscard = false;
       control('cancel');
       return;
