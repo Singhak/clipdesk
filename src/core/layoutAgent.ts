@@ -528,13 +528,25 @@ export class LayoutAgent {
     const fontSize = Math.round(11 * scale);
     const padX = Math.round(12 * scale);
     const padY = Math.round(6 * scale);
-    const x = canvasWidth - Math.round(16 * scale);
     const y = canvasHeight - Math.round(24 * scale);
 
     ctx.font = `600 ${fontSize}px Outfit, sans-serif`;
     const textWidth = ctx.measureText(text).width;
     const pillHeight = Math.round(22 * scale);
     const pillRadius = Math.round(11 * scale);
+    const pillWidth = textWidth + padX * 2;
+    const edge = Math.round(16 * scale);
+
+    // Bottom-right, unless the camera bubble sits there; then bottom-left so neither hides the other
+    let x = canvasWidth - edge;
+    const cam = o.webcamConfig;
+    if (cam?.enabled && o.webcamSource && !o.cameraOnly) {
+      const { cx, cy, radius } = LayoutAgent.getWebcamMetrics(canvasWidth, canvasHeight, cam);
+      const top = y - fontSize - padY;
+      const nearX = Math.max(x - pillWidth, Math.min(cx, x));
+      const nearY = Math.max(top, Math.min(cy, top + pillHeight));
+      if (Math.hypot(cx - nearX, cy - nearY) < radius + edge) x = edge + pillWidth;
+    }
 
     // Pill background
     ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';

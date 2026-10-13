@@ -21,16 +21,18 @@
       <div id="toast" role="status" hidden class="w-full max-w-2xl p-3 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-xs text-emerald-300 font-semibold transition-all"></div>
 
       <!-- Video Preview Player with Dynamic Captions Overlay -->
-      <div class="relative flex flex-col items-center justify-center group">
-        <video id="video" playsinline class="preview-video shadow-2xl"></video>
-        
-        <!-- Live Animated Captions Overlay with customizable location & styling -->
-        <div id="captions-overlay" class="absolute inset-0 pointer-events-none flex flex-col justify-end items-center pb-12 px-6 transition-all duration-150">
-          <div id="caption-box" class="transition-all duration-150 transform"></div>
+      <div class="flex flex-col items-center gap-2">
+        <div class="relative flex flex-col items-center justify-center">
+          <video id="video" playsinline class="preview-video shadow-2xl"></video>
+
+          <!-- Live Animated Captions Overlay with customizable location & styling -->
+          <div id="captions-overlay" class="absolute inset-0 pointer-events-none flex flex-col justify-end items-center pb-12 px-6 transition-all duration-150">
+            <div id="caption-box" class="transition-all duration-150 transform"></div>
+          </div>
         </div>
 
-        <!-- Play / Pause Floating Toggle -->
-        <button id="play-pause-btn" class="absolute bottom-4 right-4 px-3 py-1.5 rounded-lg bg-black/60 hover:bg-black/80 backdrop-blur-md border border-white/10 text-xs font-semibold text-white/90 flex items-center gap-1.5 cursor-pointer transition shadow-lg">
+        <!-- Play / Pause, below the preview so it never covers the watermark, bubble or captions -->
+        <button id="play-pause-btn" class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-white/90 flex items-center gap-1.5 cursor-pointer transition">
           <span id="play-icon">▶</span> <span id="play-text">Play</span>
         </button>
       </div>

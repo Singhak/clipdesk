@@ -462,6 +462,10 @@ async function main(): Promise<void> {
     const ratio = parseFloat((e.target as HTMLInputElement).value);
     captionSettings.positionYRatio = ratio;
     captionSettings.positionPreset = 'custom';
+    // A dragged position no longer matches a preset, so none stays highlighted
+    document.querySelectorAll('.btn-pos-preset').forEach((b) => {
+      b.className = 'btn-pos-preset p-1.5 rounded border border-white/10 hover:bg-white/10 cursor-pointer';
+    });
     $('val-location-label').textContent = `${Math.round(ratio * 100)}%`;
     renderActiveCaption();
   });
@@ -501,6 +505,14 @@ async function main(): Promise<void> {
     const sz = parseInt((e.target as HTMLInputElement).value, 10);
     captionSettings.fontSize = sz;
     captionSettings.sizePreset = 'custom';
+    // Highlight the preset this size matches, if any
+    document.querySelectorAll<HTMLButtonElement>('.btn-size-preset').forEach((b) => {
+      const preset = CAPTION_SIZE_PRESETS[b.dataset.size as Exclude<CaptionSizePreset, 'custom'>];
+      b.className =
+        preset?.fontSize === sz
+          ? 'btn-size-preset p-1.5 rounded border border-emerald-500 bg-emerald-500/20 text-white font-bold cursor-pointer'
+          : 'btn-size-preset p-1.5 rounded border border-white/10 hover:bg-white/10 cursor-pointer';
+    });
     $('val-size-label').textContent = `${sz}px`;
     renderActiveCaption();
   });
@@ -536,6 +548,15 @@ async function main(): Promise<void> {
   $('slider-bg-opacity').addEventListener('input', (e) => {
     const op = parseFloat((e.target as HTMLInputElement).value);
     captionSettings.bgOpacity = op;
+    // Raising the opacity with "None" picked would change nothing; switch to the custom color instead
+    if (captionSettings.bgPreset === 'transparent' && op > 0) {
+      captionSettings.bgPreset = 'custom';
+      captionSettings.bgColor = $<HTMLInputElement>('input-custom-bg-color').value;
+      document.querySelectorAll('.btn-bg-preset').forEach((b) => {
+        b.classList.remove('border-white', 'bg-white/15', 'text-white', 'font-bold');
+        b.classList.add('border-white/10', 'text-slate-300');
+      });
+    }
     $('val-bg-opacity-label').textContent = `${Math.round(op * 100)}% Opacity`;
     renderActiveCaption();
   });
@@ -576,7 +597,8 @@ async function main(): Promise<void> {
     captionsOverlay.style.top = `${captionSettings.positionYRatio * 100}%`;
     captionsOverlay.style.bottom = 'auto';
     captionsOverlay.style.transform = 'translateY(-50%)';
-    captionsOverlay.style.justifyContent =
+    // The overlay is a column, so horizontal placement is the cross axis
+    captionsOverlay.style.alignItems =
       captionSettings.alignment === 'left'
         ? 'flex-start'
         : captionSettings.alignment === 'right'

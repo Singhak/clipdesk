@@ -135,3 +135,13 @@ body.overlay {
 .rec-dot {
   animation: rec-pulse 1.4s infinite;
 }
+
+/* Sliders keep focus after a drag; show a thin ring instead of Chromium's heavy white box */
+input[type='range']:focus {
+  outline: none;
+}
+input[type='range']:focus-visible {
+  outline: 1px solid rgba(129, 140, 248, 0.6);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
