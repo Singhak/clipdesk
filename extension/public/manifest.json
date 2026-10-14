@@ -2,7 +2,8 @@
   "manifest_version": 3,
   "name": "ClipDesk - Vertical Screen Recorder",
   "short_name": "ClipDesk",
-  "version": "1.0.0",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAss20IC5QPSJDJW7ckrUkGNvDe+60OnsvQlIVlEr/I7DgQfblRSVVL3Ntu1P/bBLWu2M62TY4j6EpI9uYLeX9RN34LV04+Q2nBrIWMHls8B4jb7R/N0mQ0qaMKLNxMwT4pGPVt9pwpwOfFcjlnjz3xEgn61+vYEm7SFih05o9f/HSq8lx1NG0Z0Fxt3Ff0UghFF3btbnyoXA1kOtOA6v4+eWHv0ljbr39ORH7ZdJb6V8Cc/mepv3jrbecI3DxGeT6+QlnMrpI4S4NsHEwyiO42m834kwzbNX6h/EmA04h8lHqKGOYwssG6McTC2617lS+RjMj1vYA8qrYsrQ5NOtAbwIDAQAB",
+  "version": "1.1.0",
   "description": "Record a tab or your screen with your camera as a 9:16 Reel, Short or TikTok, with cursor follow and click zoom.",
   "minimum_chrome_version": "126",
   "action": {
@@ -24,15 +25,29 @@
     "service_worker": "background.js",
     "type": "module"
   },
-  "permissions": ["tabCapture", "desktopCapture", "storage", "unlimitedStorage", "scripting", "activeTab"],
-  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "permissions": [
+    "tabCapture",
+    "desktopCapture",
+    "storage",
+    "unlimitedStorage",
+    "scripting",
+    "activeTab"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
   "commands": {
     "toggle-pause": {
-      "suggested_key": { "default": "Alt+Shift+P" },
+      "suggested_key": {
+        "default": "Alt+Shift+P"
+      },
       "description": "Pause or resume recording"
     },
     "stop-recording": {
-      "suggested_key": { "default": "Alt+Shift+S" },
+      "suggested_key": {
+        "default": "Alt+Shift+S"
+      },
       "description": "Stop and save recording"
     }
   }

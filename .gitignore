@@ -45,3 +45,4 @@ public/downloads/*.msi
 .DS_Store
 Thumbs.db
 server/README.md
+certs/clipdesk-extension-key.pem
