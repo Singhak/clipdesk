@@ -1,7 +1,7 @@
 {
   "name": "clipdesk",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "description": "OBS for Reels - A Vertical Content Workspace for Desktop Creators",
   "main": "dist-electron/main.cjs",

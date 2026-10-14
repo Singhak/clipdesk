@@ -241,7 +241,7 @@ WtoR/
 │   ├── .htaccess              # Hostinger COOP/COEP headers for Wasm FFmpeg
 │   └── downloads/             # Pre-built distribution packages
 │       ├── clipdesk-extension.zip # Packaged Chrome/Edge extension ready to load
-│       └── ClipDesk-Setup-1.0.0.exe # Signed Windows NSIS installer binary
+│       └── ClipDesk-Setup-1.1.0.exe # Signed Windows NSIS installer binary
 │
 ├── src/                       # 🌐 Web Studio & Shared Core Engines
 │   ├── main.tsx               # Web Studio bootstrap
@@ -385,7 +385,7 @@ npm run desktop
 Build standalone Windows installer:
 ```bash
 npm run dist:win
-# Generates native NSIS installer inside dist-desktop/ClipDesk-Setup-1.0.0.exe
+# Generates native NSIS installer inside dist-desktop/ClipDesk-Setup-1.1.0.exe
 ```
 
 #### 4. 🔐 Windows Code Signing & Signed Packaging
