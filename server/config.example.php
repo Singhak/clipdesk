@@ -27,6 +27,9 @@ return [
         'monthly'  => ['amount_inr' => 499.00,  'days' => 30,   'label' => 'ClipDesk Pro - 30 days'],
         'lifetime' => ['amount_inr' => 2999.00, 'days' => null, 'label' => 'ClipDesk Pro - Lifetime'],
     ],
+    // Long random string; enables logs.php (read logs from the browser or curl). Leave empty to disable.
+    'admin_token' => '',
+
     'trial_days'  => 7,
     'max_devices' => 3,
 

@@ -6,7 +6,7 @@ const env = ((import.meta as { env?: Record<string, string | undefined> }).env ?
 
 export const LICENSE_PUBLIC_KEY = env.VITE_LICENSE_PUBLIC_KEY ?? '';
 
-export const LICENSE_API_BASE = (env.VITE_LICENSE_API ?? 'https://YOUR-DOMAIN/api').replace(/\/+$/, '');
+export const LICENSE_API_BASE = (env.VITE_LICENSE_API ?? 'https://clipdesk.infynetic.com/api').replace(/\/+$/, '');
 
 export const isLicensingConfigured = (): boolean =>
-  LICENSE_PUBLIC_KEY.length > 0 && !LICENSE_API_BASE.includes('YOUR-DOMAIN');
+  LICENSE_PUBLIC_KEY.length > 0 && !LICENSE_API_BASE.includes('clipdesk.infynetic.com');

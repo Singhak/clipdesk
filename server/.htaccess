@@ -15,4 +15,4 @@ Options -Indexes
 </FilesMatch>
 
 RewriteEngine On
-RewriteRule ^(lib|bin)(/|$) - [F,L]
+RewriteRule ^(lib|bin|migrations|logs)(/|$) - [F,L]

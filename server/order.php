@@ -11,7 +11,7 @@ if (preg_match('/^cd_[0-9a-f]{20}$/', $orderId)) {
     try {
         $result = fulfill_order($orderId);
     } catch (Throwable $e) {
-        error_log('ClipDesk order: ' . $e->getMessage());
+        log_event('error', 'order: ' . $e->getMessage());
         $result = ['status' => 'error'];
     }
 }

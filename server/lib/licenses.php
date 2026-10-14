@@ -23,6 +23,45 @@ function utc_now(): string
     return gmdate('Y-m-d H:i:s');
 }
 
+function log_license_event(string $key, string $type, ?string $orderId = null, ?string $deviceId = null, ?string $detail = null): void
+{
+    db()->prepare('INSERT INTO license_events (license_key, type, order_id, device_id, detail) VALUES (?, ?, ?, ?, ?)')
+        ->execute([$key, $type, $orderId, $deviceId, $detail]);
+}
+
+/** Upserts one Cashfree payment attempt (keyed by cf_payment_id) from a webhook payload's data.payment. */
+function record_payment(string $orderId, array $p): void
+{
+    $statusMap = ['SUCCESS' => 'success', 'FAILED' => 'failed', 'USER_DROPPED' => 'user_dropped'];
+    $status = $statusMap[strtoupper((string)($p['payment_status'] ?? ''))] ?? 'pending';
+    $method = is_array($p['payment_method'] ?? null) ? (string)array_key_first($p['payment_method']) : null;
+    db()->prepare('INSERT INTO payments (order_id, cf_payment_id, status, method, amount, currency, bank_reference, failure_reason)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                   ON DUPLICATE KEY UPDATE status = VALUES(status), method = VALUES(method),
+                     bank_reference = VALUES(bank_reference), failure_reason = VALUES(failure_reason)')
+        ->execute([
+            $orderId,
+            (string)$p['cf_payment_id'],
+            $status,
+            $method,
+            (float)($p['payment_amount'] ?? 0),
+            (string)($p['payment_currency'] ?? 'INR'),
+            isset($p['bank_reference']) ? substr((string)$p['bank_reference'], 0, 64) : null,
+            isset($p['payment_message']) && $status !== 'success' ? substr((string)$p['payment_message'], 0, 255) : null,
+        ]);
+}
+
+/** Revokes a license (e.g. after a refund) and marks its paid orders refunded. */
+function revoke_license(string $key, string $reason): void
+{
+    $pdo = db();
+    $pdo->prepare('UPDATE licenses SET revoked = 1, revoked_at = ?, revoked_reason = ? WHERE license_key = ?')
+        ->execute([utc_now(), substr($reason, 0, 190), $key]);
+    $pdo->prepare("UPDATE orders SET status = 'refunded', refunded_at = ? WHERE license_key = ? AND status = 'paid'")
+        ->execute([utc_now(), $key]);
+    log_license_event($key, 'revoked', null, null, $reason);
+}
+
 function find_license(string $key): ?array
 {
     $stmt = db()->prepare('SELECT * FROM licenses WHERE license_key = ?');
@@ -63,7 +102,7 @@ function fulfill_order(string $orderId): array
         return ['status' => strtolower((string)($remote['order_status'] ?? 'pending'))];
     }
     if (abs((float)$remote['order_amount'] - (float)$order['amount_inr']) > 0.009 || ($remote['order_currency'] ?? '') !== 'INR') {
-        error_log("ClipDesk: amount mismatch on order $orderId");
+        log_event('error', 'amount mismatch', ['order' => $orderId]);
         return ['status' => 'mismatch'];
     }
 
@@ -86,11 +125,13 @@ function fulfill_order(string $orderId): array
             $pdo->prepare('UPDATE licenses SET expires_at = ? WHERE license_key = ?')
                 ->execute([gmdate('Y-m-d H:i:s', $from + $plan['days'] * 86400), $renew['license_key']]);
             $key = $renew['license_key'];
+            log_license_event($key, 'renewed', $orderId, null, '+' . $plan['days'] . ' days');
         } else {
             $key = generate_license_key();
             $expires = $plan['days'] === null ? null : gmdate('Y-m-d H:i:s', time() + $plan['days'] * 86400);
             $pdo->prepare('INSERT INTO licenses (license_key, email, plan, expires_at, max_devices) VALUES (?, ?, ?, ?, ?)')
                 ->execute([$key, $order['email'], $order['plan'], $expires, config()['max_devices']]);
+            log_license_event($key, 'issued', $orderId, null, $order['plan']);
         }
 
         $pdo->prepare("UPDATE orders SET status = 'paid', license_key = ?, paid_at = ? WHERE order_id = ?")
@@ -117,6 +158,6 @@ function send_license_email(string $email, string $key, string $plan): void
         . "You can use it on up to " . config()['max_devices'] . " devices.\n";
     $headers = 'From: ' . config()['mail_from'] . "\r\nContent-Type: text/plain; charset=utf-8";
     if (!@mail($email, 'Your ClipDesk Pro license key', $body, $headers)) {
-        error_log("ClipDesk: could not email license for $email");
+        log_event('error', 'license email failed', ['email' => $email]);
     }
 }

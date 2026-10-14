@@ -13,5 +13,10 @@ if (!preg_match(CLIPDESK_KEY_PATTERN, $key) || !preg_match(CLIPDESK_DEVICE_PATTE
     json_out(['error' => 'invalid'], 400);
 }
 
-db()->prepare('DELETE FROM activations WHERE license_key = ? AND device_id = ?')->execute([$key, $deviceId]);
+$stmt = db()->prepare('DELETE FROM activations WHERE license_key = ? AND device_id = ?');
+$stmt->execute([$key, $deviceId]);
+if ($stmt->rowCount() > 0) {
+    log_license_event($key, 'deactivated', null, $deviceId);
+}
+log_event('info', 'deactivate ok', ['key' => log_mask($key), 'device' => log_mask($deviceId)]);
 json_out(['ok' => true]);

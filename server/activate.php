@@ -42,6 +42,8 @@ if ($stmt->fetch()) {
     }
     $pdo->prepare('INSERT INTO activations (license_key, device_id, last_seen) VALUES (?, ?, ?)')
         ->execute([$key, $deviceId, utc_now()]);
+    log_license_event($key, 'activated', null, $deviceId);
 }
 
+log_event('info', 'activate ok', ['key' => log_mask($key), 'device' => log_mask($deviceId)]);
 json_out(['token' => license_token($license, $deviceId)]);

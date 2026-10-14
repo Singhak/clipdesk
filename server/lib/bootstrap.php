@@ -1,6 +1,9 @@
 <?php
 declare(strict_types=1);
 
+require __DIR__ . '/log.php';
+log_register_handlers();
+
 const CLIPDESK_KEY_PATTERN = '/^CLIP-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$/';
 const CLIPDESK_DEVICE_PATTERN = '/^[A-Za-z0-9-]{8,64}$/';
 
@@ -63,6 +66,9 @@ function json_input(): array
 
 function json_out(array $body, int $status = 200): never
 {
+    if ($status >= 400) {
+        log_event($status >= 500 ? 'error' : 'warn', 'response ' . $status, ['body' => $body]);
+    }
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store');

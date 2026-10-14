@@ -26,13 +26,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $orderId = 'cd_' . bin2hex(random_bytes(10));
         $amount = (float)$plans[$plan]['amount_inr'];
-        db()->prepare('INSERT INTO orders (order_id, email, plan, amount_inr, renew_key) VALUES (?, ?, ?, ?, ?)')
-            ->execute([$orderId, $email, $plan, $amount, $renewKey !== '' ? $renewKey : null]);
+        db()->prepare('INSERT INTO orders (order_id, email, phone, plan, amount_inr, renew_key) VALUES (?, ?, ?, ?, ?, ?)')
+            ->execute([$orderId, $email, substr($phone, -10), $plan, $amount, $renewKey !== '' ? $renewKey : null]);
         try {
             $cf = cashfree_create_order($orderId, $amount, $email, substr($phone, -10), $plans[$plan]['label']);
             $sessionId = $cf['payment_session_id'];
         } catch (Throwable $e) {
-            error_log('ClipDesk checkout: ' . $e->getMessage());
+            log_event('error', 'checkout: ' . $e->getMessage());
             $error = 'Could not start the payment. Please try again in a minute.';
         }
     }
