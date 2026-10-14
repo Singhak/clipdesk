@@ -6,6 +6,8 @@ import {
   CONFIG_KEY,
   DEFAULT_CONFIG,
   ExtLayout,
+  FIXED_AREA_DEFAULTS,
+  FOLLOW_DEFAULTS,
   IDLE_STATE,
   RecState,
   RecordingConfig,
@@ -18,13 +20,24 @@ import {
 import type { TemplateId } from '../../src/core/types';
 import { CAMERA_BACKGROUNDS, type CameraBackgroundId } from '../../src/core/cameraBackground';
 import { LicensePanel } from '../../src/components/LicensePanel';
+import { FocusPicker } from '../../src/components/FocusPicker';
+import { DEFAULT_FOCUS } from '../../src/core/focusRegion';
 import { LicenseService } from '../../src/licensing/licenseService';
 import { getTierConfig } from '../../src/licensing/tierFeatures';
 
 const openUrl = (url: string) => void chrome.tabs.create({ url });
 
-const LAYOUTS: { id: ExtLayout; label: string; hint: string }[] = [
+/** Stand-in for the screen preview when there is no tab to take a picture of */
+const BLANK_PREVIEW =
+  'data:image/svg+xml;utf8,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"><rect width="1920" height="1080" fill="#0f172a"/>' +
+      '<path d="M0 0H1920V1080H0Z M640 0V1080 M1280 0V1080 M0 360H1920 M0 720H1920" stroke="#334155" stroke-width="4" fill="none"/></svg>'
+  );
+
+const LAYOUTS: { id: ExtLayout; label: string; hint: string; fixed?: boolean }[] = [
   { id: 'dynamic_crop', label: 'Follow cursor', hint: '9:16 crop that follows your mouse and zooms on clicks' },
+  { id: 'dynamic_crop', fixed: true, label: 'Fixed area', hint: '9:16 video of one part of the screen you pick. No mouse following' },
   { id: 'blur_backdrop', label: 'Blur backdrop', hint: 'Whole screen in the middle, blurred copy behind it' },
   { id: 'gradient_mesh', label: 'Gradient', hint: 'Whole screen on a gradient background' },
   { id: 'widescreen', label: '16:9 video', hint: 'Classic landscape video, like Loom' }
@@ -135,6 +148,22 @@ const Popup: React.FC = () => {
 
   const url = tab?.url ?? '';
   const tabCapturable = /^https?:|^file:/.test(url) && !url.startsWith('https://chromewebstore.google.com');
+  const isFixed = config.layout === 'dynamic_crop' && !!config.fixedArea;
+  const isLayoutSelected = (l: (typeof LAYOUTS)[number]) =>
+    config.layout === l.id && (l.id !== 'dynamic_crop' || !!config.fixedArea === !!l.fixed);
+
+  // A picture of the current tab to pick the fixed area on (opening the popup grants activeTab)
+  const [shot, setShot] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isFixed || config.source !== 'tab' || !tabCapturable) {
+      setShot(null);
+      return;
+    }
+    chrome.tabs
+      .captureVisibleTab({ format: 'jpeg', quality: 60 })
+      .then(setShot)
+      .catch(() => setShot(null));
+  }, [isFixed, config.source, tabCapturable]);
   const camNeeds = config.camera && camPerm !== 'granted';
   const micNeeds = config.mic && micPerm !== 'granted';
   const needsPermission = camNeeds || micNeeds;
@@ -271,12 +300,19 @@ const Popup: React.FC = () => {
         <div className="grid grid-cols-2 gap-1.5">
           {LAYOUTS.map((l) => (
             <button
-              key={l.id}
-              onClick={() => update({ layout: l.id })}
-              aria-pressed={config.layout === l.id}
+              key={`${l.id}-${l.fixed ? 'fixed' : 'free'}`}
+              onClick={() =>
+                update({
+                  layout: l.id,
+                  fixedArea: !!l.fixed,
+                  // A fixed area starts calm; the other vertical shapes start with everything on
+                  ...(l.id === 'widescreen' ? {} : l.fixed ? FIXED_AREA_DEFAULTS : FOLLOW_DEFAULTS)
+                })
+              }
+              aria-pressed={isLayoutSelected(l)}
               title={l.hint}
               className={`text-left px-2.5 py-2 rounded-xl border cursor-pointer ${
-                config.layout === l.id ? 'border-indigo-500 bg-indigo-500/15' : 'border-white/10 bg-white/5 hover:bg-white/10'
+                isLayoutSelected(l) ? 'border-indigo-500 bg-indigo-500/15' : 'border-white/10 bg-white/5 hover:bg-white/10'
               }`}
             >
               <span className="block text-[12px] font-bold">{l.label}</span>
@@ -298,6 +334,37 @@ const Popup: React.FC = () => {
             ))}
           </select>
         </label>
+        {config.layout !== 'widescreen' && (
+          <div className="divide-y divide-white/5">
+            {!isFixed && (
+              <Toggle
+                label="Follow mouse"
+                hint="The view moves with your cursor. Off keeps it centred"
+                checked={config.followMouse ?? true}
+                onChange={(followMouse) => update({ followMouse })}
+              />
+            )}
+            <Toggle
+              label="Zoom on clicks"
+              hint="Zooms in where you click, then back out"
+              checked={config.zoomOnClick ?? true}
+              onChange={(zoomOnClick) => update({ zoomOnClick })}
+            />
+            <Toggle
+              label="Mouse effects"
+              hint="Highlights the cursor and ripples on clicks"
+              checked={config.mouseFx ?? true}
+              onChange={(mouseFx) => update({ mouseFx })}
+            />
+          </div>
+        )}
+        {isFixed && (
+          <div className="space-y-1.5 pt-1">
+            <span className="block text-xs text-slate-300 font-semibold">Drag the frame over the part you want to record</span>
+            <FocusPicker stream={null} image={shot ?? BLANK_PREVIEW} focus={config.focus ?? DEFAULT_FOCUS} onChange={(focus) => update({ focus })} />
+            {!shot && <p className="text-xs text-slate-400">No preview for a screen or window, so the grid stands for your screen.</p>}
+          </div>
+        )}
         {config.layout === 'widescreen' && (
           <div className="divide-y divide-white/5">
             <Toggle

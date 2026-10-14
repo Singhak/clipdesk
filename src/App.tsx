@@ -414,6 +414,7 @@ export const App: React.FC = () => {
             layoutMode={layoutMode}
             license={license}
             onLayoutChange={setLayoutMode}
+            onSmartFeaturesChange={(patch) => setSmartFeatures((prev) => ({ ...prev, ...patch }))}
             onFinishRecording={handleFinishRecording}
             onCancel={handleCancelStudio}
           />

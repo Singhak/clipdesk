@@ -1,6 +1,7 @@
 import { TEMPLATES } from '../../src/core/templateManager';
 import { ReelCompositor } from '../../src/core/reelCompositor';
 import { FrameSource, TrackFrameSource } from '../../src/core/frameSource';
+import { DEFAULT_FOCUS } from '../../src/core/focusRegion';
 import { mixAudioTracks, MixedAudio } from '../../src/core/audioMixer';
 import { ExportEngine } from '../../src/core/exportEngine';
 import { LicenseService } from '../../src/licensing/licenseService';
@@ -259,13 +260,16 @@ async function main(): Promise<void> {
   const watermark = !isPro;
   tier = getTierConfig(isPro);
   bitrate = getExportBitrate(isPro).ffmpeg;
+  const wide = config.layout === 'widescreen';
+  const fixedArea = config.layout === 'dynamic_crop' && !!config.fixedArea;
   compositor = new ReelCompositor({
     template,
     layoutMode: config.layout as LayoutMode,
+    focus: fixedArea ? config.focus ?? DEFAULT_FOCUS : null,
     smartFeatures: {
-      followMouse: true,
-      zoomOnClick: config.layout === 'widescreen' ? !!config.wideZoom : true,
-      cursorHighlight: config.layout === 'widescreen' ? !!config.wideMouseFx : template.showCursorHalo,
+      followMouse: wide || (config.followMouse ?? true),
+      zoomOnClick: wide ? !!config.wideZoom : config.zoomOnClick ?? true,
+      cursorHighlight: wide ? !!config.wideMouseFx : config.mouseFx ?? true,
       blurSideAreas: true,
       smoothCameraDamping: true,
       zoomIntensity: config.zoomIntensity ?? 'deep'

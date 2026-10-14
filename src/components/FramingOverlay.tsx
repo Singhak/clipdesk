@@ -2,6 +2,7 @@ import React from 'react';
 import { Play, X } from 'lucide-react';
 import { FocusPicker } from './FocusPicker';
 import { FocusRegion } from '../core/focusRegion';
+import { SmartFeatures } from '../core/types';
 
 interface FramingOverlayProps {
   stream: MediaStream | null;
@@ -11,7 +12,11 @@ interface FramingOverlayProps {
   usesFocus: boolean;
   isWide: boolean;
   onSelectFormat: (format: 'widescreen' | 'vertical') => void;
-  onSelectFocusCrop: (on: boolean) => void;
+  /** How a vertical reel is framed: a fixed hand-picked area, following the mouse, or the whole screen */
+  cropMode: 'fixed' | 'follow' | 'whole';
+  onSelectCropMode: (mode: 'fixed' | 'follow' | 'whole') => void;
+  smartFeatures: SmartFeatures;
+  onToggleFeature: (key: 'followMouse' | 'zoomOnClick' | 'cursorHighlight') => void;
   onStart: () => void;
   onCancel: () => void;
 }
@@ -24,7 +29,10 @@ export const FramingOverlay: React.FC<FramingOverlayProps> = ({
   usesFocus,
   isWide,
   onSelectFormat,
-  onSelectFocusCrop,
+  cropMode,
+  onSelectCropMode,
+  smartFeatures,
+  onToggleFeature,
   onStart,
   onCancel
 }) => (
@@ -45,7 +53,9 @@ export const FramingOverlay: React.FC<FramingOverlayProps> = ({
             ? 'Drag the 9:16 frame over the part of the screen that matters. Only what is inside it is recorded.'
             : isWide
               ? 'Widescreen records your whole screen.'
-              : 'This layout shows your whole screen inside the reel.'}
+              : cropMode === 'follow'
+                ? 'The 9:16 view follows your mouse around the screen.'
+                : 'This layout shows your whole screen inside the reel.'}
         </p>
       </div>
 
@@ -71,16 +81,17 @@ export const FramingOverlay: React.FC<FramingOverlayProps> = ({
         {!isWide && (
           <div className="flex items-center gap-1 p-1 rounded-xl bg-white/10 border border-white/10">
             {([
-              { on: true, label: 'Focus on an area' },
-              { on: false, label: 'Whole screen' }
+              { id: 'fixed' as const, label: 'Fixed area' },
+              { id: 'follow' as const, label: 'Follow mouse' },
+              { id: 'whole' as const, label: 'Whole screen' }
             ]).map((o) => (
               <button
-                key={String(o.on)}
-                id={`framing-crop-${o.on ? 'focus' : 'whole'}`}
-                onClick={() => onSelectFocusCrop(o.on)}
-                aria-pressed={usesFocus === o.on}
+                key={o.id}
+                id={`framing-crop-${o.id}`}
+                onClick={() => onSelectCropMode(o.id)}
+                aria-pressed={cropMode === o.id}
                 className={`px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
-                  usesFocus === o.on ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:text-white'
+                  cropMode === o.id ? 'bg-indigo-600 text-white' : 'text-slate-300 hover:text-white'
                 }`}
               >
                 {o.label}
@@ -91,6 +102,30 @@ export const FramingOverlay: React.FC<FramingOverlayProps> = ({
       </div>
 
       {usesFocus && <FocusPicker stream={stream} focus={focus} onChange={onFocusChange} />}
+
+      {!isWide && (
+        <div className="flex flex-wrap items-center justify-center gap-2 text-xs">
+          {([
+            ...(cropMode === 'fixed' ? [] : [{ key: 'followMouse' as const, label: 'Follow mouse' }]),
+            { key: 'zoomOnClick' as const, label: 'Zoom on clicks' },
+            { key: 'cursorHighlight' as const, label: 'Mouse effects' }
+          ]).map((t) => (
+            <button
+              key={t.key}
+              id={`framing-toggle-${t.key}`}
+              onClick={() => onToggleFeature(t.key)}
+              aria-pressed={smartFeatures[t.key]}
+              className={`px-3 py-1.5 rounded-lg font-bold border transition-all cursor-pointer ${
+                smartFeatures[t.key]
+                  ? 'bg-indigo-600/20 border-indigo-500/50 text-white'
+                  : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+              }`}
+            >
+              {t.label}: {smartFeatures[t.key] ? 'On' : 'Off'}
+            </button>
+          ))}
+        </div>
+      )}
 
       <p className="text-xs text-slate-500 text-center">
         Tip: share a single window or tab for the clearest framing. You can still move the frame while recording.

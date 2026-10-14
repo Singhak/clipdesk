@@ -4,11 +4,15 @@ import ReactDOM from 'react-dom/client';
 import type { TemplateId } from '../../src/core/types';
 import { CAMERA_BACKGROUNDS, type CameraBackgroundId } from '../../src/core/cameraBackground';
 import { LicensePanel } from '../../src/components/LicensePanel';
+import { FocusPicker } from '../../src/components/FocusPicker';
+import { DEFAULT_FOCUS } from '../../src/core/focusRegion';
 import { openCheckout } from './license';
 import {
   DEFAULT_DESKTOP_CONFIG,
   DesktopConfig,
   DesktopLayout,
+  FIXED_AREA_DEFAULTS,
+  FOLLOW_DEFAULTS,
   IDLE_STATE,
   PermissionStatus,
   NoiseSuppressionMode,
@@ -21,8 +25,9 @@ import {
 const reel = window.reel;
 const CONFIG_STORAGE = 'clipdesk.desktopConfig';
 
-const LAYOUTS: { id: DesktopLayout; label: string; hint: string }[] = [
+const LAYOUTS: { id: DesktopLayout; label: string; hint: string; fixed?: boolean }[] = [
   { id: 'dynamic_crop', label: 'Vertical, follows mouse', hint: 'Tall video for phones. Follows your mouse and zooms where you click' },
+  { id: 'dynamic_crop', fixed: true, label: 'Vertical, fixed area', hint: 'Tall video of one part of the screen you pick. No mouse following' },
   { id: 'blur_backdrop', label: 'Vertical, blurred sides', hint: 'Tall video. Whole screen in the middle, blurred copy behind it' },
   { id: 'gradient_mesh', label: 'Vertical, colour sides', hint: 'Tall video. Whole screen on a colourful background' },
   { id: 'widescreen', label: 'Widescreen', hint: 'Normal landscape video (16:9), like Loom' }
@@ -315,6 +320,11 @@ const Launcher: React.FC = () => {
   const shown = sources?.filter((s) => s.kind === kind) ?? [];
   const selected = sources?.find((s) => s.id === config.sourceId);
   const isWindow = selected?.kind === 'window';
+  const isWide = config.layout === 'widescreen';
+  const isFixed = config.layout === 'dynamic_crop' && !!config.fixedArea;
+  const isLayoutSelected = (l: (typeof LAYOUTS)[number]) =>
+    config.layout === l.id && (l.id !== 'dynamic_crop' || !!config.fixedArea === !!l.fixed);
+  const clickZoomOn = isWide ? !!config.wideZoom : config.zoomOnClick ?? true;
 
   return (
     <main className="p-5 space-y-5">
@@ -425,7 +435,9 @@ const Launcher: React.FC = () => {
         <p className="text-[12px] text-slate-400">
           {isWindow
             ? 'Recording one window keeps the view centred. Pick a screen instead to follow your mouse and zoom on clicks.'
-            : 'The video follows your mouse anywhere on this screen and zooms where you click.'}
+            : isFixed
+              ? 'Only the area you pick below is recorded. Turn on click zoom or mouse effects if you want them.'
+              : 'The video follows your mouse anywhere on this screen and zooms where you click.'}
         </p>
       </section>
 
@@ -434,11 +446,18 @@ const Launcher: React.FC = () => {
         <div className="grid grid-cols-2 gap-1.5">
           {LAYOUTS.map((l) => (
             <button
-              key={l.id}
-              onClick={() => update({ layout: l.id })}
-              aria-pressed={config.layout === l.id}
+              key={`${l.id}-${l.fixed ? 'fixed' : 'free'}`}
+              onClick={() =>
+                update({
+                  layout: l.id,
+                  fixedArea: !!l.fixed,
+                  // A fixed area starts calm; the other vertical shapes start with everything on
+                  ...(l.id === 'widescreen' ? {} : l.fixed ? FIXED_AREA_DEFAULTS : FOLLOW_DEFAULTS)
+                })
+              }
+              aria-pressed={isLayoutSelected(l)}
               className={`text-left px-2.5 py-2 rounded-xl border cursor-pointer ${
-                config.layout === l.id ? 'border-indigo-500 bg-indigo-500/15' : 'border-white/10 bg-white/5 hover:bg-white/10'
+                isLayoutSelected(l) ? 'border-indigo-500 bg-indigo-500/15' : 'border-white/10 bg-white/5 hover:bg-white/10'
               }`}
             >
               <span className="block text-[12px] font-bold">{l.label}</span>
@@ -474,7 +493,41 @@ const Launcher: React.FC = () => {
             />
           </div>
         )}
-        {(config.layout === 'dynamic_crop' || (config.layout === 'widescreen' && config.wideZoom)) && (
+        {!isWide && (
+          <div className="divide-y divide-white/5">
+            {!isFixed && (
+              <Toggle
+                label="Follow mouse"
+                hint="The view moves with your cursor. Off keeps it centred"
+                checked={config.followMouse ?? true}
+                onChange={(followMouse) => update({ followMouse })}
+              />
+            )}
+            <Toggle
+              label="Zoom on clicks"
+              hint="Zooms in where you click, then back out"
+              checked={clickZoomOn}
+              onChange={(zoomOnClick) => update({ zoomOnClick })}
+            />
+            <Toggle
+              label="Mouse effects"
+              hint="Highlights the cursor and ripples on clicks"
+              checked={config.mouseFx ?? true}
+              onChange={(mouseFx) => update({ mouseFx })}
+            />
+          </div>
+        )}
+        {isFixed && (
+          <div className="space-y-1.5 pt-1">
+            <span className="block text-[12px] font-semibold text-slate-300">Drag the frame over the part you want to record</span>
+            {selected ? (
+              <FocusPicker stream={null} image={selected.thumbnail} focus={config.focus ?? DEFAULT_FOCUS} onChange={(focus) => update({ focus })} />
+            ) : (
+              <p className="text-[12px] text-slate-400">Pick a screen or window above first.</p>
+            )}
+          </div>
+        )}
+        {clickZoomOn && (
           <div className="space-y-1.5 pt-1">
             <span className="block text-[12px] font-semibold text-slate-300">How much to zoom when you click</span>
             <div className="grid grid-cols-3 gap-1.5">

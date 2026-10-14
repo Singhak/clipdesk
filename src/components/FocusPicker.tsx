@@ -9,12 +9,14 @@ import {
 
 interface FocusPickerProps {
   stream: MediaStream | null;
+  /** Still picture of the screen, used when there is no live stream yet (desktop launcher) */
+  image?: string;
   focus: FocusRegion;
   onChange: (f: FocusRegion) => void;
 }
 
 /** Live screen feed with a draggable 9:16 frame: whatever is inside the frame is what the reel records. */
-export const FocusPicker: React.FC<FocusPickerProps> = ({ stream, focus, onChange }) => {
+export const FocusPicker: React.FC<FocusPickerProps> = ({ stream, image, focus, onChange }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const boxRef = useRef<HTMLDivElement | null>(null);
   const [src, setSrc] = useState({ w: 1920, h: 1080 });
@@ -58,17 +60,29 @@ export const FocusPicker: React.FC<FocusPickerProps> = ({ stream, focus, onChang
         onPointerUp={() => (dragging.current = false)}
         onPointerCancel={() => (dragging.current = false)}
       >
-        <video
-          ref={videoRef}
-          autoPlay
-          muted
-          playsInline
-          className="absolute inset-0 w-full h-full pointer-events-none"
-          onLoadedMetadata={(e) => {
-            const v = e.currentTarget;
-            if (v.videoWidth > 0) setSrc({ w: v.videoWidth, h: v.videoHeight });
-          }}
-        />
+        {image && !stream ? (
+          <img
+            src={image}
+            alt=""
+            className="absolute inset-0 w-full h-full pointer-events-none"
+            onLoad={(e) => {
+              const i = e.currentTarget;
+              if (i.naturalWidth > 0) setSrc({ w: i.naturalWidth, h: i.naturalHeight });
+            }}
+          />
+        ) : (
+          <video
+            ref={videoRef}
+            autoPlay
+            muted
+            playsInline
+            className="absolute inset-0 w-full h-full pointer-events-none"
+            onLoadedMetadata={(e) => {
+              const v = e.currentTarget;
+              if (v.videoWidth > 0) setSrc({ w: v.videoWidth, h: v.videoHeight });
+            }}
+          />
+        )}
         <div
           className="absolute border-2 border-indigo-400 rounded-sm pointer-events-none"
           style={{

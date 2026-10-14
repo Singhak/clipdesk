@@ -1,5 +1,6 @@
 import type { CameraBackgroundId } from '../../src/core/cameraBackground';
 import type { TemplateId } from '../../src/core/types';
+import type { FocusRegion } from '../../src/core/focusRegion';
 
 export type CaptureSource = 'tab' | 'screen';
 export type ExtLayout = 'dynamic_crop' | 'blur_backdrop' | 'gradient_mesh' | 'widescreen';
@@ -18,7 +19,22 @@ export interface RecordingConfig {
   wideMouseFx?: boolean;
   /** Blur or replace what is behind the person in the camera bubble */
   cameraBackground?: CameraBackgroundId;
+  /** Vertical layouts: the view follows the mouse (default on) */
+  followMouse?: boolean;
+  /** Vertical layouts: zoom in where you click (default on) */
+  zoomOnClick?: boolean;
+  /** Vertical layouts: cursor highlight and click ripples */
+  mouseFx?: boolean;
+  /** 9:16 reel of one fixed part of the screen: no mouse following, no zoom unless turned on */
+  fixedArea?: boolean;
+  /** The fixed 9:16 area (normalized centre + zoom), used with `fixedArea` */
+  focus?: FocusRegion;
 }
+
+/** Vertical reel that follows the mouse: everything on */
+export const FOLLOW_DEFAULTS = { followMouse: true, zoomOnClick: true, mouseFx: true };
+/** Vertical reel of a fixed area: no mouse following, no click zoom, no cursor effects */
+export const FIXED_AREA_DEFAULTS = { followMouse: false, zoomOnClick: false, mouseFx: false };
 
 export const DEFAULT_CONFIG: RecordingConfig = {
   source: 'tab',
@@ -28,7 +44,8 @@ export const DEFAULT_CONFIG: RecordingConfig = {
   mic: true,
   showControls: true,
   wideZoom: false,
-  wideMouseFx: true
+  wideMouseFx: true,
+  ...FOLLOW_DEFAULTS
 };
 
 export type RecStatus = 'idle' | 'starting' | 'countdown' | 'recording' | 'paused' | 'saving';

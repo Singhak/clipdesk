@@ -45,6 +45,7 @@ interface LiveStudioProps {
   layoutMode: LayoutMode;
   license: LicenseInfo;
   onLayoutChange: (mode: LayoutMode) => void;
+  onSmartFeaturesChange?: (patch: Partial<SmartFeatures>) => void;
   onFinishRecording: (recordedBlob: Blob, durationSec: number, liveCaptions?: CaptionSegment[]) => void;
   onCancel: () => void;
 }
@@ -100,6 +101,7 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   layoutMode,
   license,
   onLayoutChange,
+  onSmartFeaturesChange,
   onFinishRecording,
   onCancel
 }) => {
@@ -128,7 +130,27 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
   const [isFraming, setIsFraming] = useState(() => !isWide && !cameraOnly && layoutMode === 'dynamic_crop');
   const [isCountingDown, setIsCountingDown] = useState(() => isWide || cameraOnly || layoutMode !== 'dynamic_crop');
   const [focus, setFocus] = useState<FocusRegion>(DEFAULT_FOCUS);
-  const usesFocus = !isWide && !cameraOnly && layoutMode === 'dynamic_crop';
+  // Vertical reel of a fixed, hand-picked area (no mouse following) or one that follows the mouse
+  const [fixedArea, setFixedArea] = useState(true);
+  const usesFocus = !isWide && !cameraOnly && layoutMode === 'dynamic_crop' && fixedArea;
+  const cropMode: 'fixed' | 'follow' | 'whole' = layoutMode !== 'dynamic_crop' ? 'whole' : fixedArea ? 'fixed' : 'follow';
+
+  const selectCropMode = (mode: 'fixed' | 'follow' | 'whole') => {
+    onLayoutChange(mode === 'whole' ? 'blur_backdrop' : 'dynamic_crop');
+    if (mode !== 'whole') setFixedArea(mode === 'fixed');
+    // A fixed area starts calm: no mouse following, no click zoom, no cursor effects
+    onSmartFeaturesChange?.(
+      mode === 'fixed'
+        ? { followMouse: false, zoomOnClick: false, cursorHighlight: false }
+        : { followMouse: true, zoomOnClick: true, cursorHighlight: true }
+    );
+  };
+
+  // The framing screen opens on "fixed area", so its defaults apply from the start
+  useEffect(() => {
+    if (isFraming && layoutMode === 'dynamic_crop') selectCropMode('fixed');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -386,8 +408,11 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
           onFocusChange={setFocus}
           usesFocus={usesFocus}
           isWide={isWide}
-          onSelectFormat={(f) => onLayoutChange(f === 'widescreen' ? 'widescreen' : 'dynamic_crop')}
-          onSelectFocusCrop={(on) => onLayoutChange(on ? 'dynamic_crop' : 'blur_backdrop')}
+          cropMode={cropMode}
+          smartFeatures={smartFeatures}
+          onToggleFeature={(key) => onSmartFeaturesChange?.({ [key]: !smartFeatures[key] })}
+          onSelectFormat={(f) => (f === 'widescreen' ? onLayoutChange('widescreen') : selectCropMode(isWide ? 'fixed' : cropMode))}
+          onSelectCropMode={selectCropMode}
           onStart={() => {
             setIsFraming(false);
             setIsCountingDown(true);
