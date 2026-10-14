@@ -1,5 +1,5 @@
 import React from 'react';
-import { Video, Crown, Sparkles, ShieldCheck, Activity } from 'lucide-react';
+import { Video, Crown, Sparkles, ShieldCheck, Activity, CircleHelp } from 'lucide-react';
 import { LicenseInfo } from '../core/types';
 
 interface TopNavProps {
@@ -7,13 +7,15 @@ interface TopNavProps {
   onNavigate: (step: 'welcome' | 'setup' | 'studio' | 'export') => void;
   license: LicenseInfo;
   onOpenUpgrade: () => void;
+  onOpenHelp: () => void;
 }
 
 export const TopNav: React.FC<TopNavProps> = ({
   currentStep,
   onNavigate,
   license,
-  onOpenUpgrade
+  onOpenUpgrade,
+  onOpenHelp
 }) => {
   const isPro = license.tier === 'pro';
 
@@ -94,6 +96,17 @@ export const TopNav: React.FC<TopNavProps> = ({
             <Activity className="w-3 h-3 text-emerald-400" />
             <span>Smooth 60 FPS</span>
           </div>
+
+          <button
+            type="button"
+            id="nav-help-btn"
+            aria-label="Help and keyboard shortcuts"
+            title="Help and shortcuts (?)"
+            onClick={onOpenHelp}
+            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 border border-white/10 transition-all cursor-pointer"
+          >
+            <CircleHelp className="w-4 h-4" />
+          </button>
 
           {isPro ? (
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold shadow-md shadow-amber-500/10">

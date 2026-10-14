@@ -6,6 +6,7 @@ import { LiveStudio } from './components/LiveStudio';
 import { ExportModal } from './components/ExportModal';
 import { UpgradeModal } from './components/UpgradeModal';
 import { ConfirmDialog } from './components/Modal';
+import { HelpModal } from './components/HelpModal';
 import { RecordingService } from './core/recordingService';
 import { LicenseService } from './licensing/licenseService';
 import { TEMPLATES } from './core/templateManager';
@@ -52,6 +53,20 @@ export const App: React.FC = () => {
 
   const [license, setLicense] = useState<LicenseInfo>(LicenseService.getLicense());
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+  const [isHelpOpen, setIsHelpOpen] = useState(false);
+
+  // "?" opens help unless the user is typing in a field
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== '?' || e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target;
+      if (t instanceof HTMLElement && (t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))) return;
+      e.preventDefault();
+      setIsHelpOpen(true);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // Recording state
   const [recordingService] = useState(() => new RecordingService());
@@ -256,6 +271,7 @@ export const App: React.FC = () => {
         onNavigate={(step) => handleNavigate(step)}
         license={license}
         onOpenUpgrade={() => setIsUpgradeModalOpen(true)}
+        onOpenHelp={() => setIsHelpOpen(true)}
       />
 
       {/* Main Workspace Body */}
@@ -430,6 +446,8 @@ export const App: React.FC = () => {
           if (target) handleNavigate(target, true);
         }}
       />
+
+      <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
 
       {/* Upgrade & License Modal */}
       <UpgradeModal
