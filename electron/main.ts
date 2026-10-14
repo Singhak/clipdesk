@@ -318,13 +318,17 @@ interface CaptureTarget {
 }
 let capture: CaptureTarget | null = null;
 
-async function listSources(): Promise<Electron.DesktopCapturerSource[]> {
+async function listSources(thumbnailSize = { width: 320, height: 180 }): Promise<Electron.DesktopCapturerSource[]> {
   return desktopCapturer.getSources({
     types: ['screen', 'window'],
-    thumbnailSize: { width: 320, height: 180 },
+    thumbnailSize,
     fetchWindowIcons: true
   });
 }
+
+/** JPEG data URL: far smaller than PNG for screenshots, so large previews stay quick over IPC */
+const jpegUrl = (img: Electron.NativeImage, quality: number): string =>
+  `data:image/jpeg;base64,${img.toJPEG(quality).toString('base64')}`;
 
 function ownWindowSourceIds(): Set<string> {
   return new Set(BrowserWindow.getAllWindows().map((w) => w.getMediaSourceId()));
@@ -865,20 +869,24 @@ function registerIpc(): void {
   // The source list uses tiny thumbnails; the fixed-area picker needs a sharp picture of the one chosen source
   ipcMain.handle('sources:preview', async (_e, id: string): Promise<string | null> => {
     if (typeof id !== 'string') return null;
+    // Only the chosen kind is captured at full size; shooting every window that large would be slow
     const found = (
-      await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 1280, height: 720 } })
+      await desktopCapturer.getSources({
+        types: [id.startsWith('screen:') ? 'screen' : 'window'],
+        thumbnailSize: { width: 2560, height: 1440 }
+      })
     ).find((s) => s.id === id);
-    return found && !found.thumbnail.isEmpty() ? found.thumbnail.toDataURL() : null;
+    return found && !found.thumbnail.isEmpty() ? jpegUrl(found.thumbnail, 92) : null;
   });
   ipcMain.handle('sources:get', async (): Promise<SourceInfo[]> => {
     const own = ownWindowSourceIds();
-    return (await listSources())
+    return (await listSources({ width: 640, height: 360 }))
       .filter((s) => !own.has(s.id))
       .map((s) => ({
         id: s.id,
         name: s.name,
         kind: s.id.startsWith('screen:') ? 'screen' : 'window',
-        thumbnail: s.thumbnail.toDataURL(),
+        thumbnail: jpegUrl(s.thumbnail, 82),
         appIcon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : undefined
       }));
   });
