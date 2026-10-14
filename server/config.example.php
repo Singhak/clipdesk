@@ -23,6 +23,16 @@ return [
     // Sender for license emails (must be a mailbox on your Hostinger domain)
     'mail_from' => 'ClipDesk <licenses@example.com>',
 
+    // SMTP login for that mailbox (Hostinger: smtp.hostinger.com, 465 + ssl, or 587 + tls).
+    // Leave 'pass' empty to fall back to PHP mail() (unreliable, often lands in spam).
+    'smtp' => [
+        'host'   => 'smtp.hostinger.com',
+        'port'   => 465,
+        'secure' => 'ssl', // 'ssl' or 'tls'
+        'user'   => 'licenses@example.com',
+        'pass'   => '',
+    ],
+
     'plans' => [
         'monthly'  => ['amount_inr' => 499.00,  'days' => 30,   'label' => 'ClipDesk Pro - 30 days'],
         'lifetime' => ['amount_inr' => 2999.00, 'days' => null, 'label' => 'ClipDesk Pro - Lifetime'],

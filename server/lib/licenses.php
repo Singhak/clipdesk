@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/cashfree.php';
+require_once __DIR__ . '/mailer.php';
 
 /** CLIP-XXXX-XXXX-XXXX from a Crockford-style alphabet (no I, L, O, U): 60 random bits. */
 function generate_license_key(): string
@@ -149,15 +150,8 @@ function fulfill_order(string $orderId): array
 function send_license_email(string $email, string $key, string $plan): void
 {
     $license = find_license($key);
-    $expiry = $license && $license['expires_at'] ? 'Valid until: ' . $license['expires_at'] . " UTC\n" : "Valid: lifetime\n";
-    $body = "Thanks for buying ClipDesk Pro!\n\n"
-        . "Your license key: $key\n"
-        . "Plan: $plan\n"
-        . $expiry
-        . "\nOpen ClipDesk > Upgrade > \"Have a License Key?\" and paste the key. "
-        . "You can use it on up to " . config()['max_devices'] . " devices.\n";
-    $headers = 'From: ' . config()['mail_from'] . "\r\nContent-Type: text/plain; charset=utf-8";
-    if (!@mail($email, 'Your ClipDesk Pro license key', $body, $headers)) {
+    [$html, $text] = license_email_content($key, $plan, $license['expires_at'] ?? null, (int)config()['max_devices']);
+    if (!send_mail($email, 'Your ClipDesk Pro license key', $html, $text)) {
         log_event('error', 'license email failed', ['email' => $email]);
     }
 }

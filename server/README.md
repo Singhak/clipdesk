@@ -33,13 +33,20 @@ Plans:
 
 ## Setup on Hostinger
 
-1. **Database.** In hPanel → Databases → MySQL, create a database and a user. Then import `schema.sql` in phpMyAdmin.
+1. **Database.** In hPanel → Databases → MySQL, create a database and a user. Then either:
+   - fresh database: import `schema.sql` in phpMyAdmin, or
+   - after filling `config.php` (step 3): run `php bin/migrate.php`. It applies `migrations/*.sql` in order and records them in `schema_migrations`. Use this for any database that already has data, and after every update that adds a migration.
+
+   Don't mix the two: `schema.sql` is just the migrations concatenated, so importing it into a migrated database fails on the `ALTER`s.
+
+   Tables: `licenses`, `activations`, `trials` (licensing); `orders`, `payments` (one row per Cashfree attempt), `webhook_events` (raw webhook log, replay-safe); `license_events` (issued / renewed / revoked / activated / deactivated audit trail).
+   To change the schema, add a new `migrations/NNN_name.sql`, then regenerate `schema.sql`: `cat migrations/*.sql` with the two header lines.
 2. **Upload.** Upload this folder's contents to `public_html/api/`. The `.htaccess` files block `lib/`, `bin/`, `config.php` and `schema.sql`.
 3. **Config.** Copy `config.example.php` to `config.php` and fill in:
    - the database credentials
    - the Cashfree App ID and Secret Key (Cashfree dashboard → Developers → API Keys; start with Test/sandbox)
    - `api_base_url`, for example `https://yourdomain.com/api`
-   - `mail_from`, a mailbox on your domain
+   - `mail_from`, a mailbox on your domain, and `smtp.pass`, that mailbox's password. Emails go out through PHPMailer (bundled in `lib/phpmailer/`) over Hostinger SMTP; with an empty `smtp.pass` it falls back to PHP `mail()`
    - `cors_origins`: your site, `http://localhost:5173` for dev, `chrome-extension://<your extension id>`, and `null` for the desktop app
 4. **Signing key.** Generate it once with `php bin/keygen.php`, from hPanel's SSH or any machine with PHP 8.1+.
    - Put `signing_secret_key` in `config.php`. Keep it secret: anyone with it can mint Pro tokens.
@@ -66,8 +73,14 @@ Plans:
 SELECT * FROM licenses WHERE email = 'buyer@example.com';
 -- Free all device slots for a key
 DELETE FROM activations WHERE license_key = 'CLIP-XXXX-XXXX-XXXX';
--- Refund: revoke the key
-UPDATE licenses SET revoked = 1 WHERE license_key = 'CLIP-XXXX-XXXX-XXXX';
+-- Refund: revoke the key and mark its order refunded
+UPDATE licenses SET revoked = 1, revoked_at = UTC_TIMESTAMP(), revoked_reason = 'refund' WHERE license_key = 'CLIP-XXXX-XXXX-XXXX';
+UPDATE orders SET status = 'refunded', refunded_at = UTC_TIMESTAMP() WHERE license_key = 'CLIP-XXXX-XXXX-XXXX';
+-- Payment attempts and history for a key
+SELECT o.order_id, o.status, p.method, p.status AS pay_status, p.failure_reason FROM orders o LEFT JOIN payments p USING (order_id) WHERE o.license_key = 'CLIP-XXXX-XXXX-XXXX';
+SELECT * FROM license_events WHERE license_key = 'CLIP-XXXX-XXXX-XXXX' ORDER BY created_at;
+-- Webhooks that failed processing
+SELECT received_at, type, order_id, error FROM webhook_events WHERE processed_at IS NULL;
 ```
 
 ## Open source note
