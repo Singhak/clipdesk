@@ -9,6 +9,8 @@ export default defineConfig({
   // Compile-time flag: only the Chrome extension bundles its own ONNX runtime (see whisper.worker.ts)
   define: { __EXTENSION_BUILD__: "false" },
   root: resolve(__dirname, 'electron'),
+  // root is electron/, so without this the project-root .env (VITE_LICENSE_*) is never loaded
+  envDir: __dirname,
   base: './',
   publicDir: resolve(__dirname, 'electron/public'),
   plugins: [tailwindcss(), react()],
