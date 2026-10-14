@@ -103,6 +103,17 @@ export class FFmpegManager {
     });
   }
 
+  /** True when the first video stream is already H.264, so it can be copied instead of re-encoded */
+  public static async isH264(inputPath: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const child = spawn(FFmpegManager.getBinaryPath(), ['-i', inputPath], { windowsHide: true });
+      let output = '';
+      child.stderr.on('data', (d) => (output += d.toString()));
+      child.on('close', () => resolve(/Video:\s+h264/i.test(output)));
+      child.on('error', () => resolve(false));
+    });
+  }
+
   public static async convertToMp4(
     inputPath: string,
     outputPath: string,
@@ -118,15 +129,15 @@ export class FFmpegManager {
     const hasAudio = await FFmpegManager.hasAudioStream(inputPath);
 
     // Highly compatible 1080x1920 (or 1920x1080) H.264/AAC MP4 with web-optimized faststart
-    const encoder = await FFmpegManager.pickVideoEncoder();
+    // MediaRecorder already made H.264 (at the plan's bitrate): copy it and only clean the audio.
+    // Anything else (WebM) is re-encoded.
+    const copy = await FFmpegManager.isH264(inputPath);
+    const encoder = copy ? ['-c:v', 'copy'] : await FFmpegManager.pickVideoEncoder();
     const args = [
       '-y',
       '-i', inputPath,
       ...encoder,
-      '-pix_fmt', 'yuv420p',
-      '-b:v', bitrate,
-      '-maxrate', '16M',
-      '-bufsize', '24M'
+      ...(copy ? [] : ['-pix_fmt', 'yuv420p', '-b:v', bitrate, '-maxrate', '16M', '-bufsize', '24M'])
     ];
 
     if (hasAudio) {
@@ -166,8 +177,9 @@ export class FFmpegManager {
     } catch (err) {
       // A hardware encoder can still fail on a real clip; the software one always works
       if (encoder[1] === 'libx264') throw err;
-      const software = ['-c:v', 'libx264', '-preset', 'ultrafast'];
-      await FFmpegManager.executePipeline([...args.slice(0, 3), ...software, ...args.slice(3 + encoder.length)], onProgress);
+      const software = ['-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-b:v', bitrate, '-maxrate', '16M', '-bufsize', '24M'];
+      const rest = args.slice(3 + encoder.length + (copy ? 0 : 8));
+      await FFmpegManager.executePipeline([...args.slice(0, 3), ...software, ...rest], onProgress);
     }
   }
 
