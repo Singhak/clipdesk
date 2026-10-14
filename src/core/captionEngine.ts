@@ -117,6 +117,19 @@ export const CAPTION_SIZE_PRESETS: Record<
   hero: { name: 'Hero', fontSize: 78, label: '78px' }
 };
 
+/** On-device Whisper models: tiny.en is English only; base and small cover other languages much better than tiny */
+export type LocalWhisperModel =
+  | 'Xenova/whisper-tiny.en'
+  | 'Xenova/whisper-tiny'
+  | 'Xenova/whisper-base'
+  | 'Xenova/whisper-small';
+
+/** Words are joined with spaces, except Chinese/Japanese/Thai where Whisper returns pieces of one run of text */
+function joinWords(words: string[]): string {
+  const unspaced = /[぀-ヿ㐀-鿿฀-๿]/;
+  return words.every((w) => unspaced.test(w)) ? words.join('') : words.join(' ');
+}
+
 let whisperWorker: Worker | null = null;
 let whisperQueue: Promise<unknown> = Promise.resolve();
 
@@ -389,7 +402,7 @@ export class CaptionEngine {
       this.recognition = new SpeechRec();
       this.recognition.continuous = true;
       this.recognition.interimResults = true;
-      this.recognition.lang = 'en-US';
+      this.recognition.lang = navigator.language || 'en-US';
 
       this.startTime = Date.now();
       this.recordedSegments = [];
@@ -565,7 +578,7 @@ export class CaptionEngine {
    */
   public static async transcribeWithLocalWhisper(options: {
     blob: Blob;
-    model?: 'Xenova/whisper-tiny.en' | 'Xenova/whisper-tiny';
+    model?: LocalWhisperModel;
     language?: string;
     onProgress?: (info: { status: string; progress?: number }) => void;
     signal?: AbortSignal;
@@ -596,11 +609,11 @@ export class CaptionEngine {
     await audioCtx.close();
 
     const requested = options.language && options.language !== 'auto' ? options.language : undefined;
-    // The English-only model can't transcribe another language, so a non-English pick needs the multilingual one
-    const modelName =
-      requested && requested !== 'en'
-        ? 'Xenova/whisper-tiny'
-        : options.model || 'Xenova/whisper-tiny.en';
+    // The English-only model can't transcribe another language, so a non-English pick needs a multilingual one.
+    // The tiny multilingual model is too weak for most non-English speech, so base is the floor there.
+    const wanted = options.model || 'Xenova/whisper-tiny.en';
+    const multilingual = wanted === 'Xenova/whisper-base' || wanted === 'Xenova/whisper-small';
+    const modelName: LocalWhisperModel = requested && requested !== 'en' && !multilingual ? 'Xenova/whisper-base' : wanted;
 
     // English-only (.en) models have no language token; forcing one makes them return empty text
     const language = modelName.endsWith('.en') ? undefined : requested;
@@ -637,11 +650,12 @@ export class CaptionEngine {
         });
 
         // Group into ~5-7 words per caption segment or punctuation break
-        const hasBreak = /[.?!,]$/.test(wordText) || currentWords.length >= 6;
+        // Sentence marks of other scripts count too: Hindi danda, CJK and Arabic punctuation
+        const hasBreak = /[.?!,।॥。！？、，؟،]$/.test(wordText) || currentWords.length >= 6;
         if (hasBreak || i === chunks.length - 1) {
           segments.push({
             id: `local_whisper_${segments.length}_${Date.now()}`,
-            text: currentWords.map((w) => w.word).join(' '),
+            text: joinWords(currentWords.map((w) => w.word)),
             startSec: Math.round(segStart * 100) / 100,
             endSec: Math.round(segEnd * 100) / 100,
             words: [...currentWords]

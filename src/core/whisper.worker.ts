@@ -61,13 +61,14 @@ async function getPipeline(model: string): Promise<Pipeline> {
 ctx.onmessage = async (e: MessageEvent<WhisperRequest>) => {
   const { audio, model, language } = e.data;
   try {
-    post({ type: 'progress', status: 'Loading Whisper model (~40 MB, downloaded once)...', progress: 25 });
+    post({ type: 'progress', status: 'Loading Whisper model (downloaded once)...', progress: 25 });
     const transcriber = await getPipeline(model);
     post({ type: 'progress', status: 'Transcribing speech on this device...', progress: 85 });
     const result = (await transcriber(audio, {
       chunk_length_s: 30,
       stride_length_s: 5,
       return_timestamps: 'word',
+      task: 'transcribe',
       language: language && language !== 'auto' ? language : undefined
     })) as { text?: string; chunks?: { text: string; timestamp: [number, number | null] }[] };
     post({ type: 'result', chunks: result?.chunks ?? [], text: result?.text ?? '' });

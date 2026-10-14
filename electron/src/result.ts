@@ -450,7 +450,7 @@ async function main(): Promise<void> {
       const result = await CaptionEngine.transcribeWithLocalWhisper({
         blob: currentBlob,
         language: lang,
-        model: lang === 'en' ? 'Xenova/whisper-tiny.en' : 'Xenova/whisper-tiny',
+        model: lang === 'en' ? 'Xenova/whisper-tiny.en' : 'Xenova/whisper-base',
         onProgress: ({ status }) => {
           transcribeStatus.textContent = status;
         }

@@ -43,7 +43,8 @@ import {
   CaptionSizePreset,
   CaptionAlignment,
   generateSegmentsFromText,
-  colorWithAlpha
+  colorWithAlpha,
+  type LocalWhisperModel
 } from '../core/captionEngine';
 import { ConfirmDialog } from './Modal';
 import { ProgressBar } from './ProgressBar';
@@ -98,8 +99,8 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
   const [whisperProvider, setWhisperProvider] = useState<'local' | 'groq' | 'openai'>(
     () => (localStorage.getItem('clipdesk_whisper_provider') as 'local' | 'groq' | 'openai') || 'local'
   );
-  const [localWhisperModel, setLocalWhisperModel] = useState<'Xenova/whisper-tiny.en' | 'Xenova/whisper-tiny'>(
-    'Xenova/whisper-tiny.en'
+  const [localWhisperModel, setLocalWhisperModel] = useState<LocalWhisperModel>(
+    'Xenova/whisper-base'
   );
   const [localWhisperProgress, setLocalWhisperProgress] = useState<{ status: string; progress?: number } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -846,7 +847,8 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                           className="bg-black/60 border border-white/10 rounded-lg px-2 py-0.5 text-xs text-emerald-300 focus:outline-none"
                         >
                           <option value="Xenova/whisper-tiny.en">English only (~39 MB, fastest)</option>
-                          <option value="Xenova/whisper-tiny">Multiple languages (~39 MB)</option>
+                          <option value="Xenova/whisper-base">All languages (~80 MB, recommended)</option>
+                          <option value="Xenova/whisper-small">All languages, best accuracy (~250 MB, slower)</option>
                         </select>
                       </div>
                     </div>
