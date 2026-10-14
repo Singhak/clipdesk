@@ -2,7 +2,14 @@ import './ext.css';
 import { TEMPLATES } from '../../src/core/templateManager';
 import { ReelCompositor } from '../../src/core/reelCompositor';
 import { FrameSource, TrackFrameSource } from '../../src/core/frameSource';
-import { DEFAULT_FOCUS } from '../../src/core/focusRegion';
+import {
+  DEFAULT_FOCUS,
+  FocusRegion,
+  MAX_FOCUS_ZOOM,
+  MIN_FOCUS_ZOOM,
+  clampFocus,
+  focusSize
+} from '../../src/core/focusRegion';
 import { mixAudioTracks, MixedAudio } from '../../src/core/audioMixer';
 import { ExportEngine } from '../../src/core/exportEngine';
 import { LicenseService } from '../../src/licensing/licenseService';
@@ -58,6 +65,74 @@ const webcamConfig: WebcamConfig = {
   presetPosition: 'bottom_right',
   mirror: true
 };
+
+/**
+ * Fixed area: shows the live capture in this tab with a draggable 9:16 frame, and resolves with the
+ * chosen area once the user presses Start (null when they cancel).
+ */
+function pickArea(initial: FocusRegion): Promise<FocusRegion | null> {
+  const picker = document.getElementById('picker')!;
+  const area = document.getElementById('picker-area') as HTMLDivElement;
+  const video = document.getElementById('picker-video') as HTMLVideoElement;
+  const box = document.getElementById('picker-box') as HTMLDivElement;
+  const zoom = document.getElementById('picker-zoom') as HTMLInputElement;
+  const zoomVal = document.getElementById('picker-zoom-val')!;
+  zoom.min = String(MIN_FOCUS_ZOOM);
+  zoom.max = String(MAX_FOCUS_ZOOM);
+
+  let src = { w: 1920, h: 1080 };
+  let focus = clampFocus(initial, src.w, src.h);
+  const paint = () => {
+    const { w, h } = focusSize(focus.zoom, src.w, src.h);
+    box.style.left = `${(focus.cx - w / 2) * 100}%`;
+    box.style.top = `${(focus.cy - h / 2) * 100}%`;
+    box.style.width = `${w * 100}%`;
+    box.style.height = `${h * 100}%`;
+    zoom.value = String(focus.zoom);
+    zoomVal.textContent = `${focus.zoom.toFixed(2)}x`;
+  };
+  const change = (f: FocusRegion) => {
+    focus = clampFocus(f, src.w, src.h);
+    paint();
+  };
+  const moveTo = (x: number, y: number) => {
+    const r = area.getBoundingClientRect();
+    if (r.width > 0) change({ ...focus, cx: (x - r.left) / r.width, cy: (y - r.top) / r.height });
+  };
+
+  video.srcObject = screenStream;
+  void video.play().catch(() => {});
+  video.onloadedmetadata = () => {
+    if (video.videoWidth > 0) {
+      src = { w: video.videoWidth, h: video.videoHeight };
+      area.style.aspectRatio = `${src.w} / ${src.h}`;
+      change(focus);
+    }
+  };
+
+  return new Promise((resolve) => {
+    let dragging = false;
+    area.onpointerdown = (e) => {
+      dragging = true;
+      area.setPointerCapture(e.pointerId);
+      moveTo(e.clientX, e.clientY);
+    };
+    area.onpointermove = (e) => dragging && moveTo(e.clientX, e.clientY);
+    area.onpointerup = area.onpointercancel = () => (dragging = false);
+    zoom.oninput = () => change({ ...focus, zoom: Number(zoom.value) });
+    const done = (result: FocusRegion | null) => {
+      picker.hidden = true;
+      canvas.hidden = false;
+      video.srcObject = null;
+      resolve(result);
+    };
+    (document.getElementById('picker-start') as HTMLButtonElement).onclick = () => done(focus);
+    (document.getElementById('picker-cancel') as HTMLButtonElement).onclick = () => done(null);
+    canvas.hidden = true;
+    picker.hidden = false;
+    paint();
+  });
+}
 
 function releaseAll(): void {
   stopRender?.();
@@ -278,6 +353,20 @@ async function main(): Promise<void> {
 
   // The browser's own "Stop sharing" button ends the track: save what we have
   screenStream!.getVideoTracks()[0].addEventListener('ended', () => void finish(true));
+
+  // Fixed area: choose the 9:16 frame on the live capture before anything starts
+  if (fixedArea) {
+    show('Choose the area to record', 'Drag the frame over the part you want, adjust the zoom, then press Start recording.');
+    const me = await chrome.tabs.getCurrent();
+    if (me?.id !== undefined) await chrome.tabs.update(me.id, { active: true }).catch(() => {});
+    const picked = await pickArea(config.focus ?? DEFAULT_FOCUS);
+    if (!picked) {
+      await finish(false);
+      return;
+    }
+    config.focus = picked;
+    compositor.setOptions({ focus: picked });
+  }
 
   // Back to the page the user is recording; this tab stays pinned in the background
   await chrome.tabs.update(res.originTabId, { active: true }).catch(() => {});

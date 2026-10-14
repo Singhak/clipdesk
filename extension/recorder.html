@@ -9,6 +9,31 @@
     <main class="min-h-screen flex flex-col items-center justify-center gap-4 p-4 text-center">
       <h1 id="status" class="text-xl font-extrabold">Preparing…</h1>
       <p id="detail" role="status" class="max-w-md text-sm text-slate-300"></p>
+      <section id="picker" hidden class="w-full max-w-3xl space-y-3">
+        <div
+          id="picker-area"
+          class="relative w-full overflow-hidden rounded-xl bg-black border border-white/10 touch-none cursor-move select-none"
+          style="aspect-ratio: 16 / 9"
+        >
+          <video id="picker-video" autoplay muted playsinline class="absolute inset-0 w-full h-full pointer-events-none"></video>
+          <div
+            id="picker-box"
+            class="absolute border-2 border-indigo-400 rounded-sm pointer-events-none"
+            style="box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.62)"
+          >
+            <span class="absolute -top-0.5 left-1/2 -translate-x-1/2 -translate-y-full text-xs font-bold text-indigo-300 bg-black/70 px-1.5 rounded whitespace-nowrap">9:16 reel</span>
+          </div>
+        </div>
+        <label class="flex items-center gap-3 text-xs text-slate-400">
+          <span class="shrink-0">Zoom in:</span>
+          <input id="picker-zoom" type="range" step="0.05" class="flex-1 accent-indigo-500 cursor-pointer" aria-label="Zoom of the focus frame" />
+          <span id="picker-zoom-val" class="font-mono text-slate-300 w-10 text-right"></span>
+        </label>
+        <div class="flex justify-center gap-3">
+          <button id="picker-cancel" class="px-4 py-2 rounded-lg bg-white/10 text-sm font-semibold">Cancel</button>
+          <button id="picker-start" class="px-5 py-2 rounded-lg bg-rose-600 text-sm font-bold">Start recording</button>
+        </div>
+      </section>
       <canvas id="preview" width="1080" height="1920" aria-label="Live preview of your recording"></canvas>
       <p class="max-w-md text-xs text-slate-400">This pinned tab does the recording. Closing it ends the recording.</p>
     </main>
