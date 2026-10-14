@@ -118,11 +118,11 @@ export class FFmpegManager {
     const hasAudio = await FFmpegManager.hasAudioStream(inputPath);
 
     // Highly compatible 1080x1920 (or 1920x1080) H.264/AAC MP4 with web-optimized faststart
+    const encoder = await FFmpegManager.pickVideoEncoder();
     const args = [
       '-y',
       '-i', inputPath,
-      '-c:v', 'libx264',
-      '-preset', 'veryfast',
+      ...encoder,
       '-pix_fmt', 'yuv420p',
       '-b:v', bitrate,
       '-maxrate', '16M',
@@ -155,15 +155,20 @@ export class FFmpegManager {
       args.push('-movflags', '+faststart', outputPath);
 
     const onSeconds = options?.onSeconds;
-    await FFmpegManager.executePipeline(
-      args,
-      onSeconds
-        ? (data) => {
-            const m = /time=(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(data);
-            if (m) onSeconds(Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]));
-          }
-        : undefined
-    );
+    const onProgress = onSeconds
+      ? (data: string) => {
+          const m = /time=(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(data);
+          if (m) onSeconds(Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]));
+        }
+      : undefined;
+    try {
+      await FFmpegManager.executePipeline(args, onProgress);
+    } catch (err) {
+      // A hardware encoder can still fail on a real clip; the software one always works
+      if (encoder[1] === 'libx264') throw err;
+      const software = ['-c:v', 'libx264', '-preset', 'ultrafast'];
+      await FFmpegManager.executePipeline([...args.slice(0, 3), ...software, ...args.slice(3 + encoder.length)], onProgress);
+    }
   }
 
   private static videoEncoder: Promise<string[]> | null = null;
