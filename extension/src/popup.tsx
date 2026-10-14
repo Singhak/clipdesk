@@ -359,6 +359,14 @@ const Popup: React.FC = () => {
           </div>
         )}
         {isFixed && (
+          <Toggle
+            label="Guide frame"
+            hint="Outlines your area on the page while recording, so you stay inside it (tab recording only)"
+            checked={config.guideFrame ?? true}
+            onChange={(guideFrame) => update({ guideFrame })}
+          />
+        )}
+        {isFixed && (
           <div className="space-y-1.5 pt-1">
             <span className="block text-xs text-slate-300 font-semibold">Drag the frame over the part you want to record</span>
             <FocusPicker stream={null} image={shot ?? BLANK_PREVIEW} focus={config.focus ?? DEFAULT_FOCUS} onChange={(focus) => update({ focus })} />

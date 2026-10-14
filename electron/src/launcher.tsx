@@ -531,6 +531,14 @@ const Launcher: React.FC = () => {
           </div>
         )}
         {isFixed && (
+          <Toggle
+            label="Guide frame"
+            hint="Outlines your area on screen while recording, so you stay inside it. Not in the video"
+            checked={config.guideFrame ?? true}
+            onChange={(guideFrame) => update({ guideFrame })}
+          />
+        )}
+        {isFixed && (
           <div className="space-y-1.5 pt-1">
             <span className="block text-[12px] font-semibold text-slate-300">Drag the frame over the part you want to record</span>
             {selected ? (

@@ -38,6 +38,7 @@ import {
 } from './shared';
 import { FFmpegManager } from './ffmpegManager';
 import { parseRanges, type TimeRange } from '../src/core/cutList';
+import { DEFAULT_FOCUS, clampFocus, focusSize } from '../src/core/focusRegion';
 import { initDiagnostics, log, openDiagnosticsFolder } from './diagnostics';
 import { checkNow, initUpdater, installNow, updateStatus } from './updater';
 import { LICENSE_API_BASE } from '../src/licensing/publicKey';
@@ -72,6 +73,7 @@ let launcher: BrowserWindow | null = null;
 let recorder: BrowserWindow | null = null;
 let controls: BrowserWindow | null = null;
 let countdown: BrowserWindow | null = null;
+let guide: BrowserWindow | null = null;
 let cameraBubble: BrowserWindow | null = null;
 let tray: Tray | null = null;
 
@@ -204,6 +206,32 @@ function sizeCountdown(): void {
   });
 }
 
+/**
+ * Dashed outline around the fixed area while recording, as a reminder of where to stay. It sits just
+ * outside the area, ignores the mouse and is hidden from the capture like the other overlays.
+ */
+function showGuide(): void {
+  closeWindow(guide);
+  if (!config.fixedArea || !(config.guideFrame ?? true) || capture?.kind !== 'screen') return;
+  const d = targetDisplay().bounds;
+  const f = clampFocus(config.focus ?? DEFAULT_FOCUS, d.width, d.height);
+  const { w, h } = focusSize(f.zoom, d.width, d.height);
+  const pad = 4;
+  guide = overlayWindow({
+    x: Math.round(d.x + (f.cx - w / 2) * d.width) - pad,
+    y: Math.round(d.y + (f.cy - h / 2) * d.height) - pad,
+    width: Math.round(w * d.width) + pad * 2,
+    height: Math.round(h * d.height) + pad * 2,
+    focusable: false,
+    title: 'ClipDesk guide'
+  });
+  guide.setIgnoreMouseEvents(true);
+  const html =
+    '<body style="margin:0;background:transparent;overflow:hidden"><div style="position:fixed;inset:0;border:3px dashed #818cf8;border-radius:4px;box-sizing:border-box"></div></body>';
+  void guide.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+  guide.on('closed', () => (guide = null));
+}
+
 function showCameraBubble(): void {
   if (cameraBubble && !cameraBubble.isDestroyed()) {
     if (!cameraBubble.isVisible()) cameraBubble.show();
@@ -292,6 +320,8 @@ function onStatusChange(prev: RecState['status']): void {
   } else {
     closeWindow(countdown);
   }
+  if (s === 'countdown') showGuide();
+  else if (s !== 'recording' && s !== 'paused') closeWindow(guide);
   if (isCapturing(s)) {
     startTracking();
     registerShortcuts();
@@ -309,6 +339,7 @@ function onStatusChange(prev: RecState['status']): void {
     closeWindow(controls);
     closeWindow(countdown);
     closeWindow(cameraBubble);
+    closeWindow(guide);
     if (recorder && !recorder.isDestroyed()) recorder.destroy();
     recorder = null;
     capture = null;

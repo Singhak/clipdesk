@@ -29,12 +29,14 @@ export interface RecordingConfig {
   fixedArea?: boolean;
   /** The fixed 9:16 area (normalized centre + zoom), used with `fixedArea` */
   focus?: FocusRegion;
+  /** Fixed area: outline the area on screen while recording, as a reminder (never in the video) */
+  guideFrame?: boolean;
 }
 
 /** Vertical reel that follows the mouse: everything on */
 export const FOLLOW_DEFAULTS = { followMouse: true, zoomOnClick: true, mouseFx: true };
 /** Vertical reel of a fixed area: no mouse following, no click zoom, no cursor effects */
-export const FIXED_AREA_DEFAULTS = { followMouse: false, zoomOnClick: false, mouseFx: false };
+export const FIXED_AREA_DEFAULTS = { followMouse: false, zoomOnClick: false, mouseFx: false, guideFrame: true };
 
 export const DEFAULT_CONFIG: RecordingConfig = {
   source: 'tab',
@@ -63,6 +65,8 @@ export interface RecState {
   /** Tab being recorded (tab source) */
   targetTabId?: number;
   showControls: boolean;
+  /** Fixed area on a tab capture: the page outlines it while recording (set by the recorder) */
+  guide?: FocusRegion;
   error?: string;
 }
 

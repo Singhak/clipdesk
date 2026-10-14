@@ -371,7 +371,9 @@ async function main(): Promise<void> {
   // Back to the page the user is recording; this tab stays pinned in the background
   await chrome.tabs.update(res.originTabId, { active: true }).catch(() => {});
 
-  await setState({ status: 'countdown', countdownEndsAt: Date.now() + COUNTDOWN_MS, camera: webcamConfig.enabled });
+  // Tab capture only: the tab's viewport is the capture, so the area can be outlined in the page itself
+  const guide = fixedArea && res.source === 'tab' && (config.guideFrame ?? true) ? config.focus ?? DEFAULT_FOCUS : undefined;
+  await setState({ status: 'countdown', countdownEndsAt: Date.now() + COUNTDOWN_MS, camera: webcamConfig.enabled, guide });
   show('Starting in 3…', 'Keep this tab open. Use the floating bar, the toolbar button, or Alt+Shift+P / Alt+Shift+S.');
   await new Promise((r) => setTimeout(r, COUNTDOWN_MS));
   if (finishing) return;

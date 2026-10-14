@@ -1,3 +1,4 @@
+import { clampFocus, focusSize } from '../../src/core/focusRegion';
 import { ControlAction, IDLE_STATE, RecState, STATE_KEY, elapsedMs, formatTime, send } from './shared';
 
 // Injected by the service worker when a recording starts (see injectControls in background.ts). Shows the floating control bar,
@@ -216,7 +217,35 @@ function init(): void {
     r.appendChild(bar);
   }
 
+  // Dashed outline of the fixed area. It sits just outside the area, so the crop leaves it out of the video.
+  let guideHost: HTMLDivElement | null = null;
+  function renderGuide(): void {
+    const on = !!state.guide && (state.status === 'countdown' || state.status === 'recording' || state.status === 'paused');
+    if (!on) {
+      guideHost?.remove();
+      guideHost = null;
+      return;
+    }
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const f = clampFocus(state.guide!, W, H);
+    const { w, h } = focusSize(f.zoom, W, H);
+    if (!guideHost) {
+      guideHost = document.createElement('div');
+      guideHost.id = 'clipdesk-guide';
+      guideHost.style.cssText =
+        'position:fixed;z-index:2147483646;pointer-events:none;box-sizing:content-box;outline:3px dashed #818cf8;outline-offset:3px;border-radius:2px';
+      document.documentElement.appendChild(guideHost);
+    }
+    guideHost.style.left = `${(f.cx - w / 2) * W}px`;
+    guideHost.style.top = `${(f.cy - h / 2) * H}px`;
+    guideHost.style.width = `${w * W}px`;
+    guideHost.style.height = `${h * H}px`;
+  }
+  window.addEventListener('resize', renderGuide);
+
   function render(): void {
+    renderGuide();
     const visible =
       state.showControls && (state.status === 'countdown' || state.status === 'recording' || state.status === 'paused' || state.status === 'saving');
     teardown();
