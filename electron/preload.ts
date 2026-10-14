@@ -31,6 +31,7 @@ const api = {
 
   // Launcher
   getSources: (): Promise<SourceInfo[]> => ipcRenderer.invoke('sources:get'),
+  getSourcePreview: (id: string): Promise<string | null> => ipcRenderer.invoke('sources:preview', id),
   getConfig: (): Promise<DesktopConfig> => ipcRenderer.invoke('config:get'),
   start: (config: DesktopConfig): Promise<void> => ipcRenderer.invoke('recording:start', config),
   resetError: () => ipcRenderer.send('state:reset-error'),

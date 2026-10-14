@@ -237,6 +237,19 @@ const Launcher: React.FC = () => {
     return () => window.clearInterval(t);
   }, [kind, refresh]);
 
+  // A sharp picture of the chosen source for the fixed-area picker (the list thumbnails are tiny)
+  const [preview, setPreview] = useState<string | null>(null);
+  const previewNeeded = config.layout === 'dynamic_crop' && !!config.fixedArea && state.status === 'idle';
+  useEffect(() => {
+    setPreview(null);
+    if (!previewNeeded || !config.sourceId) return;
+    let cancelled = false;
+    void reel.getSourcePreview(config.sourceId).then((p) => !cancelled && setPreview(p)).catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [previewNeeded, config.sourceId]);
+
   const idle = state.status === 'idle';
   const mic = useMicLevel(config.mic && idle && !starting);
   useEffect(() => {
@@ -521,7 +534,7 @@ const Launcher: React.FC = () => {
           <div className="space-y-1.5 pt-1">
             <span className="block text-[12px] font-semibold text-slate-300">Drag the frame over the part you want to record</span>
             {selected ? (
-              <FocusPicker stream={null} image={selected.thumbnail} focus={config.focus ?? DEFAULT_FOCUS} onChange={(focus) => update({ focus })} />
+              <FocusPicker stream={null} image={preview ?? selected.thumbnail} focus={config.focus ?? DEFAULT_FOCUS} onChange={(focus) => update({ focus })} />
             ) : (
               <p className="text-[12px] text-slate-400">Pick a screen or window above first.</p>
             )}

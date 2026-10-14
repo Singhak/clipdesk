@@ -862,6 +862,14 @@ function registerIpc(): void {
   });
 
   ipcMain.handle('config:get', () => config);
+  // The source list uses tiny thumbnails; the fixed-area picker needs a sharp picture of the one chosen source
+  ipcMain.handle('sources:preview', async (_e, id: string): Promise<string | null> => {
+    if (typeof id !== 'string') return null;
+    const found = (
+      await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 1280, height: 720 } })
+    ).find((s) => s.id === id);
+    return found && !found.thumbnail.isEmpty() ? found.thumbnail.toDataURL() : null;
+  });
   ipcMain.handle('sources:get', async (): Promise<SourceInfo[]> => {
     const own = ownWindowSourceIds();
     return (await listSources())
