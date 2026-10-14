@@ -6,6 +6,9 @@ import { FrameSource } from './frameSource';
 import { CameraBackgroundProcessor } from './cameraBackground';
 import { CameraState, LayoutMode, SmartFeatures, TemplateConfig, WebcamConfig } from './types';
 
+/** Widescreen rest zoom while follow-mouse is on: enough crop slack to pan, still mostly the full screen. */
+const WIDESCREEN_FOLLOW_ZOOM = 1.25;
+
 export interface CompositorOptions {
   template: TemplateConfig;
   layoutMode: LayoutMode;
@@ -121,9 +124,13 @@ export class ReelCompositor {
     const cursorY = smartFeatures.followMouse ? this.cursor.y : sh / 2;
     let camera: CameraState;
     if (layoutMode === 'widescreen') {
-      // Full screen at rest; a click punches in by the template's click/rest ratio, keeping 16:9
-      camera = smartFeatures.zoomOnClick
-        ? this.camera.update(cursorX, cursorY, activeZoom / template.defaultZoom, now, sw / sh)
+      // Full screen at rest; a click punches in by the template's click/rest ratio, keeping 16:9.
+      // With follow-mouse on, the view never rests at 1x (nothing to pan): it holds a gentle zoom
+      // so the camera can track the cursor, and a click still punches in further.
+      const clickRatio = smartFeatures.zoomOnClick ? activeZoom / template.defaultZoom : 1;
+      const widescreenZoom = smartFeatures.followMouse ? Math.max(clickRatio, WIDESCREEN_FOLLOW_ZOOM) : clickRatio;
+      camera = widescreenZoom > 1
+        ? this.camera.update(cursorX, cursorY, widescreenZoom, now, sw / sh)
         : { cropX: 0, cropY: 0, cropWidth: sw, cropHeight: sh, zoom: 1, targetX: sw / 2, targetY: sh / 2 };
     } else {
       camera = this.camera.update(cursorX, cursorY, activeZoom, now);
