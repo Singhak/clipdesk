@@ -45,6 +45,8 @@ $mode = config()['cashfree']['env'] === 'production' ? 'production' : 'sandbox';
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Buy ClipDesk Pro</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='18' height='24' x='3' y='0' rx='4' fill='%234f46e5'/><polygon points='10,7 16,12 10,17' fill='white'/></svg>">
+
 <style>
   body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: #0b0d14; color: #e2e8f0; }
   main { max-width: 420px; margin: 48px auto; padding: 0 16px; }
