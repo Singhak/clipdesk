@@ -189,6 +189,21 @@ function showCountdown(): void {
   countdown.on('closed', () => (countdown = null));
 }
 
+/** Big while a fixed area is being picked, the small round countdown otherwise */
+function sizeCountdown(): void {
+  if (!countdown || countdown.isDestroyed()) return;
+  const area = targetDisplay().workArea;
+  const picking = state.status === 'ready' && !!state.areaPick;
+  const width = picking ? Math.min(760, area.width - 80) : 300;
+  const height = picking ? Math.min(640, area.height - 80) : 300;
+  countdown.setBounds({
+    x: Math.round(area.x + (area.width - width) / 2),
+    y: Math.round(area.y + (area.height - height) / 2),
+    width,
+    height
+  });
+}
+
 function showCameraBubble(): void {
   if (cameraBubble && !cameraBubble.isDestroyed()) {
     if (!cameraBubble.isVisible()) cameraBubble.show();
@@ -271,6 +286,7 @@ function onStatusChange(prev: RecState['status']): void {
   // The countdown window doubles as the "place your camera, then Start" panel
   if (s === 'ready' || s === 'countdown') {
     showCountdown();
+    sizeCountdown();
     showControls();
     if (state.camera) showCameraBubble();
   } else {
@@ -915,6 +931,17 @@ function registerIpc(): void {
     if (controls && !controls.isDestroyed()) {
       controls.webContents.send('preview:frame', dataUrl);
     }
+  });
+
+  // Live view of the screen from the recorder to the "choose the area" panel, and the picked area back
+  ipcMain.on('recorder:picker-frame', (_e, dataUrl: string) => {
+    if (countdown && !countdown.isDestroyed()) countdown.webContents.send('picker:frame', dataUrl);
+  });
+  ipcMain.on('picker:focus', (_e, f: { cx: number; cy: number; zoom: number }) => {
+    const ok = [f?.cx, f?.cy, f?.zoom].every((n) => typeof n === 'number' && Number.isFinite(n));
+    if (!ok) return;
+    config = { ...config, focus: { cx: f.cx, cy: f.cy, zoom: f.zoom } };
+    if (recorder && !recorder.isDestroyed()) recorder.webContents.send('recorder:focus', config.focus);
   });
 
   ipcMain.on('camera:move-by', (_e, { x, y }: { x: number; y: number }) => {

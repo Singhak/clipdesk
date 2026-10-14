@@ -12,6 +12,7 @@ import type {
   SourceInfo
 } from './shared';
 import type { TimeRange } from '../src/core/cutList';
+import type { FocusRegion } from '../src/core/focusRegion';
 
 // The only bridge between the desktop pages and the main process. Pages get no Node access.
 
@@ -55,6 +56,10 @@ const api = {
   setControlsSize: (size: { width: number; height: number }) => ipcRenderer.send('controls:size', size),
   onPreviewFrame: (callback: (dataUrl: string) => void) => listen('preview:frame', callback),
 
+  // "Choose the area" panel shown before a fixed-area take starts
+  onPickerFrame: (callback: (dataUrl: string) => void) => listen('picker:frame', callback),
+  setFocus: (focus: FocusRegion) => ipcRenderer.send('picker:focus', focus),
+
   // Floating camera bubble
   camera: {
     moveBy: (delta: { x: number; y: number }) => ipcRenderer.send('camera:move-by', delta),
@@ -75,6 +80,8 @@ const api = {
     onWebcamSize: (callback: (size: 'small' | 'medium' | 'large') => void) => listen('recorder:webcam-size', callback),
     onWebcamToggle: (callback: (enabled: boolean) => void) => listen('recorder:webcam-toggle', callback),
     sendPreviewFrame: (dataUrl: string) => ipcRenderer.send('recorder:preview-frame', dataUrl),
+    sendPickerFrame: (dataUrl: string) => ipcRenderer.send('recorder:picker-frame', dataUrl),
+    onFocus: (callback: (focus: FocusRegion) => void) => listen('recorder:focus', callback),
     beginTake: (extension: RecordingExtension): Promise<void> => ipcRenderer.invoke('recorder:begin', extension),
     writeChunk: (bytes: ArrayBuffer): Promise<void> => ipcRenderer.invoke('recorder:chunk', bytes),
     save: (req: SaveRequest): Promise<SavedRecording> => ipcRenderer.invoke('recorder:save', req),

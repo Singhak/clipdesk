@@ -115,6 +115,20 @@ function startRendering(): void {
   });
 }
 
+/** Sends a live picture of the whole screen to the "choose the area" panel until Start is pressed */
+function startPickerFrames(): () => void {
+  const pic = document.createElement('canvas');
+  const pctx = pic.getContext('2d', { alpha: false })!;
+  return ExportEngine.startTicker(250, () => {
+    const src = screenSource;
+    if (!src?.image || src.width === 0) return;
+    pic.width = 960;
+    pic.height = Math.round((960 * src.height) / src.width);
+    pctx.drawImage(src.image, 0, 0, pic.width, pic.height);
+    reel.recorder.sendPickerFrame(pic.toDataURL('image/jpeg', 0.75));
+  });
+}
+
 function onPointer(p: PointerSample): void {
   if (!compositor) return;
   const { width, height } = compositor.getSourceSize();
@@ -188,6 +202,7 @@ function onControl(action: ControlAction): void {
 async function main(): Promise<void> {
   reel.recorder.onControl(onControl);
   reel.recorder.onPointer(onPointer);
+  reel.recorder.onFocus((focus) => compositor?.setOptions({ focus }));
   reel.recorder.onWebcamPos((pos) => {
     webcamConfig.position = pos;
     compositor?.setOptions({ webcamConfig: { ...webcamConfig } });
@@ -283,14 +298,17 @@ async function main(): Promise<void> {
   screenStream.getVideoTracks()[0].addEventListener('ended', () => void finish(true));
 
   // With the camera on, wait for Start so the bubble can be moved, resized or flipped before the take
-  if (webcamConfig.enabled) {
-    setState({ status: 'ready', camera: true });
+  // A fixed area waits too, so it can be picked on a live view of the screen first
+  if (webcamConfig.enabled || fixedArea) {
+    setState({ status: 'ready', camera: webcamConfig.enabled, areaPick: fixedArea });
+    const stopFrames = fixedArea ? startPickerFrames() : null;
     await new Promise<void>((resolve) => (startNow = resolve));
     startNow = null;
+    stopFrames?.();
     if (finishing) return;
   }
 
-  setState({ status: 'countdown', countdownEndsAt: Date.now() + COUNTDOWN_MS, camera: webcamConfig.enabled });
+  setState({ status: 'countdown', countdownEndsAt: Date.now() + COUNTDOWN_MS, camera: webcamConfig.enabled, areaPick: false });
   await new Promise((r) => setTimeout(r, COUNTDOWN_MS));
   if (finishing) return;
 

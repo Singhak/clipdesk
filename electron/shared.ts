@@ -78,6 +78,8 @@ export interface RecState {
   runningSince: number | null;
   countdownEndsAt?: number;
   camera: boolean;
+  /** 'ready' wait: the fixed area is picked on a live view before Start */
+  areaPick?: boolean;
   /** False when cursor follow can't work for the chosen source (window capture) */
   cursorTracking: boolean;
   /** False when the global mouse hook isn't available, so clicks don't zoom */

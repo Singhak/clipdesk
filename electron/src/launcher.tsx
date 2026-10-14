@@ -277,7 +277,7 @@ const Launcher: React.FC = () => {
       <main className="min-h-screen p-6 flex flex-col justify-center gap-4">
         <div className="flex items-center gap-2">
           <span className={`w-3 h-3 rounded-full ${paused ? 'bg-amber-400' : 'bg-rose-500 rec-dot'}`} />
-          <span className="text-base font-bold capitalize">{state.status === 'countdown' ? 'Starting…' : state.status === 'ready' ? 'Place your camera' : state.status}</span>
+          <span className="text-base font-bold capitalize">{state.status === 'countdown' ? 'Starting…' : state.status === 'ready' ? (state.areaPick ? 'Choose your area' : 'Place your camera') : state.status}</span>
           <span className="ml-auto font-mono text-2xl font-black">{formatTime(elapsedMs(state, now))}</span>
         </div>
         {live && (
