@@ -166,6 +166,32 @@ export class FFmpegManager {
     );
   }
 
+  private static videoEncoder: Promise<string[]> | null = null;
+
+  /**
+   * H.264 encoder args for edits: NVENC or AMF when they really work on this machine (a
+   * listed encoder can still fail without the matching GPU or driver), else software x264 ultrafast.
+   * Intel QuickSync is left out: on an integrated GPU it measured slower than ultrafast x264.
+   * Probed once with a tiny test clip.
+   */
+  private static pickVideoEncoder(): Promise<string[]> {
+    FFmpegManager.videoEncoder ??= (async () => {
+      for (const enc of ['h264_nvenc', 'h264_amf']) {
+        try {
+          await FFmpegManager.executePipeline([
+            '-v', 'error', '-f', 'lavfi', '-i', 'color=c=black:s=256x256:d=0.2:r=10',
+            '-c:v', enc, '-pix_fmt', 'yuv420p', '-f', 'null', '-'
+          ]);
+          return ['-c:v', enc];
+        } catch {
+          // not usable here, try the next one
+        }
+      }
+      return ['-c:v', 'libx264', '-preset', 'ultrafast'];
+    })();
+    return FFmpegManager.videoEncoder;
+  }
+
   /**
    * Re-encodes the video, keeping only `keep.ranges` when given and burning in an ASS subtitle script
    * when `assPath` is given. The script is referenced by its bare file name from its own directory,
@@ -193,30 +219,31 @@ export class FFmpegManager {
       video = '[vsub]';
     }
 
-    const args = ['-y', '-i', inputPath];
-    if (chains.length) args.push('-filter_complex', chains.join(';'), '-map', video);
-    else args.push('-map', '0:v');
-    args.push(
-      '-c:v', 'libx264',
-      '-preset', 'veryfast',
-      '-pix_fmt', 'yuv420p',
-      '-b:v', '14M',
-      '-maxrate', '18M',
-      '-bufsize', '28M'
-    );
-    // No audio filters: the voice was already cleaned when the take was saved
-    if (audio) args.push('-map', audio, '-c:a', 'aac', '-b:a', '192k');
-    else args.push('-an');
-    args.push('-movflags', '+faststart', outputPath);
+    const build = (encoder: string[]): string[] => {
+      const args = ['-y', '-i', inputPath];
+      if (chains.length) args.push('-filter_complex', chains.join(';'), '-map', video);
+      else args.push('-map', '0:v');
+      args.push(...encoder, '-pix_fmt', 'yuv420p', '-b:v', '14M', '-maxrate', '18M', '-bufsize', '28M');
+      // No audio filters: the voice was already cleaned when the take was saved
+      if (audio) args.push('-map', audio, '-c:a', 'aac', '-b:a', '192k');
+      else args.push('-an');
+      args.push('-movflags', '+faststart', outputPath);
+      return args;
+    };
+    const onProgress = (data: string) => {
+      const m = /time=(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(data);
+      if (m && onSeconds) onSeconds(Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]));
+    };
+    const cwd = assPath ? path.dirname(assPath) : undefined;
 
-    await FFmpegManager.executePipeline(
-      args,
-      (data) => {
-        const m = /time=(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(data);
-        if (m && onSeconds) onSeconds(Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]));
-      },
-      assPath ? path.dirname(assPath) : undefined
-    );
+    const encoder = await FFmpegManager.pickVideoEncoder();
+    try {
+      await FFmpegManager.executePipeline(build(encoder), onProgress, cwd);
+    } catch (err) {
+      // A hardware encoder can still fail on a real clip; the software one always works
+      if (encoder[1] === 'libx264') throw err;
+      await FFmpegManager.executePipeline(build(['-c:v', 'libx264', '-preset', 'ultrafast']), onProgress, cwd);
+    }
   }
 }
 
