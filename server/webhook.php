@@ -14,7 +14,7 @@ if (!$ok) {
 }
 
 $event = json_decode($raw, true) ?: [];
-$orderId = (string)($event['data']['order']['order_id'] ?? '');
+$orderId = (string)($event['data']['order']['order_id'] ?? $event['data']['refund']['order_id'] ?? $event['data']['dispute']['order_id'] ?? '');
 $type = (string)($event['type'] ?? '');
 
 // Log every verified webhook. A replay of an already-processed event is acknowledged without re-running it.
@@ -46,6 +46,21 @@ if ($type === 'PAYMENT_SUCCESS_WEBHOOK' && $orderId !== '') {
         $pdo->prepare('UPDATE webhook_events SET error = ? WHERE event_key = ?')->execute([substr($e->getMessage(), 0, 500), $eventKey]);
         json_out(['error' => 'retry'], 500); // Cashfree retries on non-2xx
     }
+} elseif ($type === 'REFUND_STATUS_WEBHOOK' && $orderId !== '') {
+    // Only a completed, full refund takes the license back; partial refunds are a manual decision
+    $refund = $event['data']['refund'] ?? [];
+    $stmt = $pdo->prepare('SELECT amount_inr FROM orders WHERE order_id = ?');
+    $stmt->execute([$orderId]);
+    $paid = $stmt->fetchColumn();
+    if (strtoupper((string)($refund['refund_status'] ?? '')) === 'SUCCESS'
+        && $paid !== false && (float)($refund['refund_amount'] ?? 0) + 0.009 >= (float)$paid) {
+        reverse_order($orderId, 'refunded via Cashfree');
+    } else {
+        log_event('warn', 'refund webhook not applied', ['order' => $orderId, 'status' => $refund['refund_status'] ?? null]);
+    }
+} elseif (preg_match('/DISPUTE|CHARGEBACK/i', $type) && $orderId !== '') {
+    // A dispute or chargeback suspends the license until you review it
+    reverse_order($orderId, 'dispute: ' . substr($type, 0, 60));
 } elseif (in_array($event['type'] ?? '', ['PAYMENT_FAILED_WEBHOOK', 'PAYMENT_USER_DROPPED_WEBHOOK'], true) && $orderId !== '') {
     db()->prepare("UPDATE orders SET status = 'failed' WHERE order_id = ? AND status = 'created'")->execute([$orderId]);
 }

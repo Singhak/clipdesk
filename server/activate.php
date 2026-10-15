@@ -6,6 +6,7 @@ require __DIR__ . '/lib/token.php';
 
 // Activates a key on a device (or refreshes an existing activation) and returns a signed token.
 cors();
+rate_limit('activate', 30, 600);
 $in = json_input();
 $key = normalize_key((string)($in['key'] ?? ''));
 $deviceId = (string)($in['deviceId'] ?? '');

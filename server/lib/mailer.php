@@ -52,7 +52,7 @@ function send_mail(string $to, string $subject, string $html, string $text): boo
         $mail->send();
         return true;
     } catch (Throwable $e) {
-        log_event('error', 'mail failed', ['to' => $to, 'error' => $e->getMessage()]);
+        log_event('error', 'mail failed', ['to' => mask_email($to), 'error' => $e->getMessage()]);
         return false;
     }
 }

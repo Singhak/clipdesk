@@ -8,8 +8,22 @@ require __DIR__ . '/lib/licenses.php';
 $orderId = (string)($_GET['order_id'] ?? '');
 $result = ['status' => 'unknown'];
 if (preg_match('/^cd_[0-9a-f]{20}$/', $orderId)) {
+    rate_limit('order', 120, 600);
     try {
         $result = fulfill_order($orderId);
+        // A cancelled checkout leaves the Cashfree order ACTIVE until it expires, so tell "still
+        // paying" apart from "gave up": only a pending/successful attempt is worth waiting for.
+        if ($result['status'] === 'active') {
+            $waiting = false;
+            foreach (cashfree_get_order_payments($orderId) as $p) {
+                if (in_array($p['payment_status'] ?? '', ['PENDING', 'SUCCESS'], true)) {
+                    $waiting = true;
+                }
+            }
+            if (!$waiting) {
+                $result = ['status' => 'cancelled'];
+            }
+        }
     } catch (Throwable $e) {
         log_event('error', 'order: ' . $e->getMessage());
         $result = ['status' => 'error'];

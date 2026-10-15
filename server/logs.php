@@ -1,11 +1,12 @@
 <?php
 declare(strict_types=1);
-// Read-only log viewer. Call: logs.php?token=<admin_token>[&date=YYYY-MM-DD][&lines=200][&level=error][&q=text]
+// Read-only log viewer. Call with header 'X-Admin-Token: <admin_token>': logs.php[?date=YYYY-MM-DD][&lines=200][&level=error][&q=text]
 // Add 'admin_token' (long random string) to config.php. Without it this endpoint is disabled.
 require __DIR__ . '/lib/bootstrap.php';
 
 $expected = (string)(config()['admin_token'] ?? '');
-$given = (string)($_GET['token'] ?? ($_SERVER['HTTP_X_ADMIN_TOKEN'] ?? ''));
+// Header only: a token in the query string would end up in access logs and referrers
+$given = (string)($_SERVER['HTTP_X_ADMIN_TOKEN'] ?? '');
 if (strlen($expected) < 24 || !hash_equals($expected, $given)) {
     http_response_code(404);
     exit;

@@ -20,6 +20,9 @@ function sign_token(array $payload): string
     return $body . '.' . b64url_encode(sodium_crypto_sign_detached($body, $secret));
 }
 
+/** Lifetime keys never expire, but their tokens do, so a revoke reaches a device within this window. */
+const LIFETIME_TOKEN_DAYS = 45;
+
 function license_token(array $license, string $deviceId): string
 {
     return sign_token([
@@ -29,6 +32,8 @@ function license_token(array $license, string $deviceId): string
         'key'      => $license['license_key'],
         'deviceId' => $deviceId,
         'iat'      => time(),
-        'exp'      => $license['expires_at'] === null ? null : strtotime($license['expires_at'] . ' UTC'),
+        'exp'      => $license['expires_at'] === null
+            ? time() + LIFETIME_TOKEN_DAYS * 86400
+            : strtotime($license['expires_at'] . ' UTC'),
     ]);
 }

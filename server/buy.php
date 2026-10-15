@@ -17,6 +17,7 @@ $phone = preg_replace('/\D/', '', (string)($_POST['phone'] ?? ''));
 $renewKey = normalize_key((string)($_REQUEST['renew'] ?? ''));
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    rate_limit('buy', 10, 3600);
     if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $error = 'Enter a valid email address. Your license key is sent there.';
     } elseif (!preg_match('/^[6-9]\d{9}$/', substr($phone, -10))) {
@@ -94,7 +95,7 @@ $mode = config()['cashfree']['env'] === 'production' ? 'production' : 'sandbox';
     <button type="submit">Continue to payment</button>
     <?php if ($error): ?><div class="err"><?= h($error) ?></div><?php endif; ?>
   </form>
-  <p class="muted">Payments are processed by Cashfree. Prices include applicable taxes.</p>
+  <p class="muted">Payments are processed by Cashfree. Prices include applicable taxes. <a href="resend.php" style="color:#f59e0b">Lost your key?</a></p>
 <?php endif; ?>
 </main>
 </body>

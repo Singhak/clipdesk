@@ -5,6 +5,7 @@ require __DIR__ . '/lib/licenses.php';
 
 // Frees this device's slot so the key can be activated elsewhere.
 cors();
+rate_limit('deactivate', 30, 600);
 $in = json_input();
 $key = normalize_key((string)($in['key'] ?? ''));
 $deviceId = (string)($in['deviceId'] ?? '');

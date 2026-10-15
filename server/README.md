@@ -24,6 +24,7 @@ It needs:
 | `webhook.php` | Cashfree payment webhook |
 | `activate.php` | `POST {key, deviceId}` → `{token}` |
 | `deactivate.php` | `POST {key, deviceId}` frees a device slot |
+| `resend.php` | "Lost my key" page: emails a customer's active keys to their own address |
 | `trial.php` | `POST {deviceId}` → 7-day trial token, one per device |
 
 Plans:
@@ -42,7 +43,8 @@ Plans:
    Tables: `licenses`, `activations`, `trials` (licensing); `orders`, `payments` (one row per Cashfree attempt), `webhook_events` (raw webhook log, replay-safe); `license_events` (issued / renewed / revoked / activated / deactivated audit trail).
    To change the schema, add a new `migrations/NNN_name.sql`, then regenerate `schema.sql`: `cat migrations/*.sql` with the two header lines.
 2. **Upload.** Upload this folder's contents to `public_html/api/`. The `.htaccess` files block `lib/`, `bin/`, `config.php` and `schema.sql`.
-3. **Config.** Copy `config.example.php` to `config.php` and fill in:
+3. **Config.** Copy `config.example.php` to `clipdesk-config.php` in your home folder, one level above `public_html` (or set the `CLIPDESK_CONFIG` env var to its path). If your host won't allow that, use `server/config.php` instead. Fill in:
+   - `trusted_ip_header` if the site is behind a proxy/CDN, and a random `hash_salt` (see the comments in the example). Run `php bin/migrate.php` after updating: migration 003 adds the rate-limit table.
    - the database credentials
    - the Cashfree App ID and Secret Key (Cashfree dashboard → Developers → API Keys; start with Test/sandbox)
    - `api_base_url`, for example `https://yourdomain.com/api`

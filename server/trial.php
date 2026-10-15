@@ -5,6 +5,7 @@ require __DIR__ . '/lib/token.php';
 
 // One 7-day trial per device, and at most 3 trials per IP per day.
 cors();
+rate_limit('trial', 20, 600);
 $in = json_input();
 $deviceId = (string)($in['deviceId'] ?? '');
 if (!preg_match(CLIPDESK_DEVICE_PATTERN, $deviceId)) {
@@ -18,7 +19,7 @@ $stmt->execute([$deviceId]);
 $existing = $stmt->fetchColumn();
 
 if ($existing === false) {
-    $ipHash = hash('sha256', ($_SERVER['REMOTE_ADDR'] ?? '') . config()['signing_secret_key']);
+    $ipHash = subject_hash(client_ip());
     $stmt = $pdo->prepare('SELECT COUNT(*) FROM trials WHERE ip_hash = ? AND created_at > ?');
     $stmt->execute([$ipHash, gmdate('Y-m-d H:i:s', time() - 86400)]);
     if ((int)$stmt->fetchColumn() >= 3) {

@@ -63,6 +63,34 @@ function revoke_license(string $key, string $reason): void
     log_license_event($key, 'revoked', null, null, $reason);
 }
 
+/**
+ * Handles a full refund or a dispute on an order. A first-purchase order revokes its license; a
+ * renewal order only takes its days back off the key it extended. Safe to call repeatedly.
+ */
+function reverse_order(string $orderId, string $reason): void
+{
+    $pdo = db();
+    $stmt = $pdo->prepare('SELECT * FROM orders WHERE order_id = ?');
+    $stmt->execute([$orderId]);
+    $order = $stmt->fetch();
+    if (!$order || $order['status'] !== 'paid' || !$order['license_key']) {
+        return;
+    }
+    $key = $order['license_key'];
+    $plan = config()['plans'][$order['plan']] ?? null;
+    $license = find_license($key);
+    if ($order['renew_key'] && $plan && $plan['days'] !== null && $license && $license['expires_at'] !== null) {
+        $newExpiry = strtotime($license['expires_at'] . ' UTC') - $plan['days'] * 86400;
+        $pdo->prepare('UPDATE licenses SET expires_at = ? WHERE license_key = ?')
+            ->execute([gmdate('Y-m-d H:i:s', $newExpiry), $key]);
+        $pdo->prepare("UPDATE orders SET status = 'refunded', refunded_at = ? WHERE order_id = ?")
+            ->execute([utc_now(), $orderId]);
+        log_license_event($key, 'revoked', $orderId, null, substr('renewal reversed: ' . $reason, 0, 255));
+        return;
+    }
+    revoke_license($key, $reason);
+}
+
 function find_license(string $key): ?array
 {
     $stmt = db()->prepare('SELECT * FROM licenses WHERE license_key = ?');
@@ -152,6 +180,6 @@ function send_license_email(string $email, string $key, string $plan): void
     $license = find_license($key);
     [$html, $text] = license_email_content($key, $plan, $license['expires_at'] ?? null, (int)config()['max_devices']);
     if (!send_mail($email, 'Your ClipDesk Pro license key', $html, $text)) {
-        log_event('error', 'license email failed', ['email' => $email]);
+        log_event('error', 'license email failed', ['email' => mask_email($email)]);
     }
 }

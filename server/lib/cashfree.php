@@ -66,6 +66,12 @@ function cashfree_get_order(string $orderId): array
     return cashfree_request('GET', '/orders/' . rawurlencode($orderId));
 }
 
+/** Payment attempts on an order (a JSON list; empty if the customer never submitted one). */
+function cashfree_get_order_payments(string $orderId): array
+{
+    return cashfree_request('GET', '/orders/' . rawurlencode($orderId) . '/payments');
+}
+
 /** Webhook signature: base64(HMAC-SHA256(timestamp . rawBody, secret_key)). */
 function cashfree_verify_webhook(string $rawBody, string $timestamp, string $signature): bool
 {

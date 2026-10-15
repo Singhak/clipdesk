@@ -11,8 +11,20 @@ function config(): array
 {
     static $config = null;
     if ($config === null) {
-        $path = __DIR__ . '/../config.php';
-        if (!is_file($path)) {
+        // Prefer a config kept above the web root; server/config.php still works as a fallback
+        $candidates = array_filter([
+            getenv('CLIPDESK_CONFIG') ?: null,
+            dirname(__DIR__, 3) . '/clipdesk-config.php',
+            __DIR__ . '/../config.php',
+        ]);
+        $path = null;
+        foreach ($candidates as $candidate) {
+            if (is_file($candidate)) {
+                $path = $candidate;
+                break;
+            }
+        }
+        if ($path === null) {
             http_response_code(500);
             exit('Server not configured: copy config.example.php to config.php');
         }
@@ -33,6 +45,48 @@ function db(): PDO
         ]);
     }
     return $pdo;
+}
+
+/**
+ * The caller's IP. Behind a proxy or CDN, REMOTE_ADDR is the proxy, so set 'trusted_ip_header' in
+ * config (e.g. 'HTTP_CF_CONNECTING_IP' or 'HTTP_X_FORWARDED_FOR') to the header your host controls.
+ */
+function client_ip(): string
+{
+    $header = config()['trusted_ip_header'] ?? '';
+    if ($header !== '' && !empty($_SERVER[$header])) {
+        $first = trim(explode(',', (string)$_SERVER[$header])[0]);
+        if (filter_var($first, FILTER_VALIDATE_IP)) {
+            return $first;
+        }
+    }
+    return (string)($_SERVER['REMOTE_ADDR'] ?? '');
+}
+
+/** Salted hash of a value (IP, email) so rate-limit and trial tables hold no raw personal data. */
+function subject_hash(string $value): string
+{
+    $c = config();
+    return hash('sha256', strtolower($value) . (($c['hash_salt'] ?? '') ?: $c['signing_secret_key']));
+}
+
+/** Allows at most $max hits per $windowSec for this subject (default: the caller's IP); else answers 429. */
+function rate_limit(string $bucket, int $max, int $windowSec, ?string $subject = null): void
+{
+    $who = subject_hash($subject ?? client_ip());
+    $pdo = db();
+    $since = gmdate('Y-m-d H:i:s', time() - $windowSec);
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM rate_limits WHERE bucket = ? AND subject = ? AND created_at > ?');
+    $stmt->execute([$bucket, $who, $since]);
+    if ((int)$stmt->fetchColumn() >= $max) {
+        header('Retry-After: ' . $windowSec);
+        json_out(['error' => 'rate_limited', 'message' => 'Too many requests. Please try again later.'], 429);
+    }
+    $pdo->prepare('INSERT INTO rate_limits (bucket, subject, created_at) VALUES (?, ?, ?)')
+        ->execute([$bucket, $who, gmdate('Y-m-d H:i:s')]);
+    if (random_int(1, 50) === 1) {
+        $pdo->prepare('DELETE FROM rate_limits WHERE created_at < ?')->execute([gmdate('Y-m-d H:i:s', time() - 172800)]);
+    }
 }
 
 /** Sends CORS headers for allowed origins and answers preflight requests. */
@@ -79,6 +133,13 @@ function json_out(array $body, int $status = 200): never
 function normalize_key(string $key): string
 {
     return strtoupper(trim($key));
+}
+
+/** Hides most of an email address for logs: a***@example.com */
+function mask_email(string $email): string
+{
+    $at = strrpos($email, '@');
+    return $at === false || $at < 1 ? '****' : $email[0] . '***' . substr($email, $at);
 }
 
 function h(?string $s): string

@@ -1,5 +1,6 @@
 <?php
-// Copy to config.php (gitignored) and fill in. Never commit real secrets.
+// Copy to ../../clipdesk-config.php (one level above the web root, e.g. /home/user/clipdesk-config.php)
+// or, if you can't, to server/config.php (gitignored). Never commit real secrets.
 return [
     'db' => [
         'dsn'  => 'mysql:host=localhost;dbname=clipdesk;charset=utf8mb4',
@@ -39,6 +40,14 @@ return [
     ],
     // Long random string; enables logs.php (read logs from the browser or curl). Leave empty to disable.
     'admin_token' => '',
+
+    // Header carrying the real client IP when the site sits behind a proxy/CDN, e.g. 'HTTP_CF_CONNECTING_IP'
+    // or 'HTTP_X_FORWARDED_FOR'. Leave empty if clients connect directly. Without this behind a proxy,
+    // every visitor shares one IP and the per-IP limits throttle everyone together.
+    'trusted_ip_header' => '',
+
+    // Salt for hashed IPs/emails in rate_limits and trials. Generate once: php -r "echo bin2hex(random_bytes(32));"
+    'hash_salt' => '',
 
     'trial_days'  => 7,
     'max_devices' => 3,
