@@ -3,12 +3,77 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ClipDesk — Turn screen recordings into Reels, Shorts &amp; TikToks</title>
-  <meta name="description" content="Record your screen once and get a polished 9:16 vertical video for Instagram Reels, YouTube Shorts and TikTok. Auto camera follow, click zoom, captions and a camera bubble. Everything runs on your device." />
+  <title>ClipDesk — Screen Recording to Instagram Reels, YouTube Shorts &amp; TikTok</title>
+  <meta name="description" content="Free screen recorder that makes vertical 9:16 videos for Instagram Reels, YouTube Shorts and TikTok. Auto cursor follow, click zoom, captions and a camera bubble. Runs on your device, open source." />
+  <link rel="canonical" href="https://clipdesk.infynetic.com/" />
+  <meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large" />
   <meta property="og:title" content="ClipDesk — OBS for Reels" />
   <meta property="og:description" content="Record your screen once. Get a vertical video that is ready to post. No editing, no uploads." />
   <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://clipdesk.infynetic.com/" />
+  <meta property="og:site_name" content="ClipDesk" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="ClipDesk — Turn screen recordings into Reels, Shorts & TikToks" />
+  <meta name="twitter:description" content="Free, open-source screen recorder that auto-follows your cursor, zooms on clicks and adds captions, all on your device." />
   <meta name="theme-color" content="#07070d" />
+  <link rel="alternate" type="text/plain" href="/llms.txt" title="LLM-readable summary" />
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://clipdesk.infynetic.com/#app",
+        "name": "ClipDesk",
+        "alternateName": "ClipDesk — OBS for Reels",
+        "url": "https://clipdesk.infynetic.com/",
+        "description": "Free, open-source screen recorder that turns widescreen screen recordings into 9:16 vertical videos for Instagram Reels, YouTube Shorts and TikTok. The camera follows your cursor, zooms on clicks and adds on-device captions and a camera bubble. Nothing is uploaded.",
+        "applicationCategory": "MultimediaApplication",
+        "applicationSubCategory": "Screen recorder, vertical video maker",
+        "operatingSystem": "Windows 10, Windows 11, Chrome, Microsoft Edge",
+        "softwareVersion": "1.1.0",
+        "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+        "isAccessibleForFree": true,
+        "downloadUrl": "https://clipdesk.infynetic.com/download/windows",
+        "codeRepository": "https://github.com/Singhak/clipdesk",
+        "inLanguage": "en",
+        "featureList": [
+          "Camera follows your cursor in a 9:16 frame",
+          "Smooth zoom on clicks",
+          "On-device Whisper captions with no API key, plus SRT and VTT import and export",
+          "Camera bubble with on-device background blur or replacement",
+          "Voice clean-up: noise gate, EQ and compressor",
+          "Cut editor with undo and redo",
+          "Records locally; videos are never uploaded"
+        ],
+        "offers": [
+          { "@type": "Offer", "name": "Free", "price": "0", "priceCurrency": "INR", "description": "1080x1920 export, recordings up to 90 seconds, ClipDesk watermark" },
+          { "@type": "Offer", "name": "Pro 30-day pass", "price": "499", "priceCurrency": "INR", "url": "https://clipdesk.infynetic.com/#pricing", "description": "No watermark, unlimited recording length, Pro templates" },
+          { "@type": "Offer", "name": "Pro Lifetime", "price": "2999", "priceCurrency": "INR", "url": "https://clipdesk.infynetic.com/#pricing", "description": "Never expires, up to 3 devices, works offline" }
+        ]
+      },
+      {
+        "@type": "WebSite",
+        "@id": "https://clipdesk.infynetic.com/#website",
+        "url": "https://clipdesk.infynetic.com/",
+        "name": "ClipDesk",
+        "inLanguage": "en"
+      },
+      {
+        "@type": "FAQPage",
+        "mainEntity": [
+          { "@type": "Question", "name": "What is ClipDesk?", "acceptedAnswer": { "@type": "Answer", "text": "ClipDesk is a free, open-source (GPL-3.0) screen recorder that turns widescreen screen recordings into ready-to-post 9:16 vertical videos for Instagram Reels, YouTube Shorts and TikTok. The camera follows your cursor, zooms on clicks and adds captions, with no manual editing. It runs as a Windows app, a Chrome/Edge extension and a web app." } },
+          { "@type": "Question", "name": "How do I turn a screen recording into a vertical video?", "acceptedAnswer": { "@type": "Answer", "text": "Open ClipDesk, pick a template, share your screen and press record. ClipDesk crops to 9:16 while following your cursor and zooming on clicks. Afterwards trim the take, add captions and download a 1080x1920 MP4 ready to upload." } },
+          { "@type": "Question", "name": "Is ClipDesk free?", "acceptedAnswer": { "@type": "Answer", "text": "Yes. The Free plan exports 1080x1920 video with captions, camera bubble and trimming, limited to 90-second recordings with a ClipDesk watermark. Pro removes the watermark and the limit: 499 INR for a 30-day pass or 2,999 INR for a lifetime licence on up to 3 devices. The source code is open under GPL-3.0." } },
+          { "@type": "Question", "name": "Is my video uploaded anywhere?", "acceptedAnswer": { "@type": "Answer", "text": "No. Recording, rendering and caption generation all run on your computer. The only network use is a one-time download of the captions model (about 40 MB) and checking your licence key." } },
+          { "@type": "Question", "name": "Do I need an API key for captions?", "acceptedAnswer": { "@type": "Answer", "text": "No. Captions are generated on your device with Whisper. You can optionally use your own Groq or OpenAI key, in which case the audio is sent to that provider. SRT and VTT files can be imported and exported." } },
+          { "@type": "Question", "name": "Does it work on Mac or Linux?", "acceptedAnswer": { "@type": "Answer", "text": "The desktop app is Windows only for now. The web app and Chrome/Edge extension work on any desktop browser, though cursor follow and click zoom while you work in other apps need the Windows app." } },
+          { "@type": "Question", "name": "Is ClipDesk open source?", "acceptedAnswer": { "@type": "Answer", "text": "Yes, it is released under GPL-3.0 at github.com/Singhak/clipdesk. Pro pays for the convenience and the lifted limits, and it funds development." } }
+        ]
+      }
+    ]
+  }
+  </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -199,6 +264,14 @@
       </div>
     </div>
 
+    <!-- What is it: plain-language definition for readers and answer engines -->
+    <section id="about" style="padding-bottom:0">
+      <div class="wrap" style="max-width:820px">
+        <h2>What is ClipDesk?</h2>
+        <p class="sub" style="max-width:none;margin-bottom:0">ClipDesk is a free, open-source screen recorder that makes vertical videos. You record a normal widescreen screen, and it produces a 1080&times;1920 (9:16) MP4 for Instagram Reels, YouTube Shorts and TikTok. It follows your cursor, zooms when you click, adds captions and an optional camera bubble, and runs entirely on your computer. It is built for developers, founders, marketers and teachers who demo software and don&rsquo;t want to learn a video editor. It comes as a Windows app, a Chrome/Edge extension and a web app.</p>
+      </div>
+    </section>
+
     <!-- How it works -->
     <section id="how">
       <div class="wrap">
@@ -292,6 +365,7 @@
             </tbody>
           </table>
         </div>
+        <p class="cmp-note" style="margin-bottom:10px">Step-by-step guides: <a href="/guides/screen-recording-to-instagram-reel.html" style="text-decoration:underline">screen recording to Instagram Reel</a> &middot; <a href="/guides/screen-recording-to-youtube-shorts.html" style="text-decoration:underline">to YouTube Shorts</a> &middot; <a href="/guides/screen-recording-to-tiktok.html" style="text-decoration:underline">to TikTok</a> &middot; <a href="/guides/record-screen-vertical-video.html" style="text-decoration:underline">record your screen in vertical</a>.</p>
         <p class="cmp-note">Short version: pick the Windows app to record anything beyond the browser, the extension for web demos, and the web app to try ClipDesk without installing. Following the cursor inside a single app window is Windows-only for now.</p>
       </div>
     </section>
@@ -349,6 +423,10 @@
         <p class="eyebrow">Questions</p>
         <h2>Frequently asked</h2>
         <br />
+        <details><summary>What is ClipDesk?</summary><p>ClipDesk is a free, open-source screen recorder that turns widescreen screen recordings into ready-to-post 9:16 vertical videos for Instagram Reels, YouTube Shorts and TikTok. The camera follows your cursor, zooms on clicks and adds captions, with no manual editing.</p></details>
+        <details><summary>How do I turn a screen recording into a vertical video?</summary><p>Open ClipDesk, pick a template, share your screen and press record. ClipDesk crops to 9:16 while following your cursor and zooming on clicks. Afterwards trim the take, add captions and download a 1080&times;1920 MP4 ready to upload.</p></details>
+        <details><summary>Is ClipDesk free?</summary><p>Yes. The Free plan exports 1080&times;1920 video with captions, camera bubble and trimming, limited to 90-second recordings with a ClipDesk watermark. Pro removes the watermark and the limit: &#8377;499 for a 30-day pass or &#8377;2,999 for a lifetime licence on up to 3 devices.</p></details>
+        <details><summary>Do I need an API key for captions?</summary><p>No. Captions are generated on your device with Whisper. You can optionally use your own Groq or OpenAI key, in which case the audio is sent to that provider. You can also import and export .srt and .vtt files.</p></details>
         <details><summary>Is my video uploaded anywhere?</summary><p>No. Recording, rendering and caption generation all run on your computer. The only network use is a one-time download of the captions model (about 40&nbsp;MB), and checking your licence key.</p></details>
         <details><summary>Does it work on Mac or Linux?</summary><p>Not yet. The desktop app is Windows only for now. The web app and Chrome extension work on any desktop browser.</p></details>
         <details><summary>Why use the desktop app instead of the browser?</summary><p>The desktop app can record any program, such as VS Code, Figma or a terminal, follow your cursor across them, capture system audio and keep its own controls out of the video. The web app can only react to your mouse over its own preview, so it can&rsquo;t follow or zoom while you work in another app.</p></details>
@@ -375,6 +453,7 @@
     <div class="wrap foot">
       <div>&copy; <span id="year">2026</span> ClipDesk &middot; Open source under GPL-3.0</div>
       <nav aria-label="Footer">
+        <a href="/guides/">Guides</a>
         <a href="/terms.html">Terms</a>
         <a href="/privacy.html">Privacy</a>
         <a href="/refund.html">Refunds</a>

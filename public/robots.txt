@@ -1,0 +1,53 @@
+# ClipDesk is open source and welcomes search engines and AI assistants.
+# Allow everything public; keep the licensing/payment API out of indexes.
+
+User-agent: *
+Allow: /
+Disallow: /api/
+
+# AI search / answer engines and user-triggered fetchers (explicitly allowed)
+User-agent: OAI-SearchBot
+Allow: /
+Disallow: /api/
+
+User-agent: ChatGPT-User
+Allow: /
+Disallow: /api/
+
+User-agent: GPTBot
+Allow: /
+Disallow: /api/
+
+User-agent: Claude-SearchBot
+Allow: /
+Disallow: /api/
+
+User-agent: Claude-User
+Allow: /
+Disallow: /api/
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /api/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /api/
+
+User-agent: Perplexity-User
+Allow: /
+Disallow: /api/
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /api/
+
+User-agent: Applebot-Extended
+Allow: /
+Disallow: /api/
+
+User-agent: Bingbot
+Allow: /
+Disallow: /api/
+
+Sitemap: https://clipdesk.infynetic.com/sitemap.xml
