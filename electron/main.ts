@@ -9,6 +9,7 @@ import {
   nativeImage,
   net,
   Notification,
+  protocol,
   screen,
   session,
   shell,
@@ -17,6 +18,7 @@ import {
 } from 'electron';
 import { spawn, ChildProcess } from 'node:child_process';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import fs from 'node:fs/promises';
 import {
   ControlAction,
@@ -426,6 +428,21 @@ async function startRecording(next: DesktopConfig): Promise<void> {
   });
   void recorder.loadFile(pageUrl('recorder.html'));
   launcher?.hide();
+}
+
+// Recordings are streamed to the result window over clipdesk-media://rec/<id> (with Range support for
+// seeking) instead of being read into memory and sent over IPC, which breaks down on multi-GB takes.
+const MEDIA_SCHEME = 'clipdesk-media';
+protocol.registerSchemesAsPrivileged([{ scheme: MEDIA_SCHEME, privileges: { standard: true, stream: true, supportFetchAPI: true, secure: true } }]);
+
+function installMediaProtocol(): void {
+  protocol.handle(MEDIA_SCHEME, (request) => {
+    // Only known recording ids resolve, and only to the take's own file
+    const id = decodeURIComponent(new URL(request.url).pathname.replace(/^\//, ''));
+    const meta = recordings.get(id);
+    if (!meta) return new Response('Not found', { status: 404 });
+    return net.fetch(pathToFileURL(meta.sourcePath ?? meta.path).toString(), { headers: request.headers });
+  });
 }
 
 // The recorder calls getDisplayMedia(); answer it with the source picked in the launcher, without a browser picker
@@ -1056,7 +1073,8 @@ function registerIpc(): void {
     if (!meta) return null;
     try {
       // The editor always works on the untouched take; meta.kept says what the saved edit keeps
-      return { meta, bytes: await fs.readFile(meta.sourcePath ?? meta.path) };
+      await fs.access(meta.sourcePath ?? meta.path);
+      return { meta, mediaUrl: `${MEDIA_SCHEME}://rec/${encodeURIComponent(id)}` };
     } catch {
       return null;
     }
@@ -1170,6 +1188,7 @@ if (!app.requestSingleInstanceLock()) {
   void app.whenReady().then(() => {
     if (process.platform === 'win32') app.setAppUserModelId('ai.ruh.clipdesk');
     installCaptureHandlers();
+    installMediaProtocol();
     registerIpc();
     createTray();
     initUpdater(refreshTray);

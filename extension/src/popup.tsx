@@ -127,6 +127,7 @@ const Popup: React.FC = () => {
     };
     chrome.storage.onChanged.addListener(onChange);
     const unsub = LicenseService.subscribe((info) => setIsPro(info.tier === 'pro'));
+    void LicenseService.refresh();
     const id = window.setInterval(() => setNow(Date.now()), 250);
     return () => {
       chrome.storage.onChanged.removeListener(onChange);

@@ -97,7 +97,8 @@ export class LicenseService {
       tier: 'pro',
       plan: payload.plan,
       licenseKey: payload.key ?? undefined,
-      expiresAt: payload.exp === null ? undefined : new Date(payload.exp * 1000).toISOString(),
+      // A lifetime token expires only so it gets re-checked; the license itself does not
+      expiresAt: payload.exp === null || payload.plan === 'lifetime' ? undefined : new Date(payload.exp * 1000).toISOString(),
       planName: PLAN_NAMES[payload.plan] ?? 'Pro Creator'
     };
   }

@@ -91,7 +91,7 @@ const api = {
 
   // Result window
   result: {
-    get: (id: string): Promise<{ meta: SavedRecording; bytes: Uint8Array } | null> => ipcRenderer.invoke('result:get', id),
+    get: (id: string): Promise<{ meta: SavedRecording; mediaUrl: string } | null> => ipcRenderer.invoke('result:get', id),
     showInFolder: (id: string) => ipcRenderer.send('result:show', id),
     saveAs: (id: string): Promise<string | null> => ipcRenderer.invoke('result:save-as', id),
     trash: (id: string): Promise<boolean> => ipcRenderer.invoke('result:trash', id),

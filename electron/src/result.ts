@@ -1,5 +1,4 @@
 import './app.css';
-import { ExportEngine } from '../../src/core/exportEngine';
 import {
   CaptionEngine,
   type CaptionStyleId,
@@ -32,6 +31,24 @@ function formatSubSec(sec: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${ms}`;
 }
 
+/** Duration from the video element's metadata, or null if it can't be read in time */
+function probeDuration(video: HTMLVideoElement, timeoutMs = 5000): Promise<number | null> {
+  return new Promise((resolve) => {
+    const done = (value: number | null) => {
+      window.clearTimeout(timer);
+      video.removeEventListener('loadedmetadata', onMeta);
+      video.removeEventListener('error', onError);
+      resolve(value);
+    };
+    const onMeta = () => done(Number.isFinite(video.duration) ? video.duration : null);
+    const onError = () => done(null);
+    const timer = window.setTimeout(() => done(null), timeoutMs);
+    if (video.readyState >= 1) return onMeta();
+    video.addEventListener('loadedmetadata', onMeta);
+    video.addEventListener('error', onError);
+  });
+}
+
 async function main(): Promise<void> {
   const id = location.hash.slice(1);
   let got = id ? await reel.result.get(id) : null;
@@ -45,25 +62,16 @@ async function main(): Promise<void> {
   }
 
   let { meta } = got;
-  const { bytes } = got;
-  let activeUrl = '';
+  const { mediaUrl } = got;
   const video = $<HTMLVideoElement>('video');
   const wide = meta.layout === 'widescreen';
   video.classList.toggle('wide', wide);
 
-  function loadVideoBlob(videoBytes: Uint8Array, videoPath: string): Blob {
-    if (activeUrl) URL.revokeObjectURL(activeUrl);
-    const blob = new Blob([videoBytes as BlobPart], {
-      type: videoPath.endsWith('.webm') ? 'video/webm' : 'video/mp4'
-    });
-    activeUrl = URL.createObjectURL(blob);
-    video.src = activeUrl;
-    return blob;
-  }
-
-  // The editor always shows the untouched take (main sends the source even after an edit was saved)
-  const currentBlob = loadVideoBlob(bytes, meta.sourcePath ?? meta.path);
-  const probed = (await ExportEngine.probeDuration(currentBlob)) ?? meta.timerMs / 1000;
+  // The editor always shows the untouched take (main streams the source even after an edit was saved)
+  video.src = mediaUrl;
+  /** Loads the whole take into memory: only for transcription, which decodes all of its audio anyway */
+  const loadTakeBlob = async (): Promise<Blob> => (await fetch(mediaUrl)).blob();
+  const probed = (await probeDuration(video)) ?? meta.timerMs / 1000;
   const totalDuration = probed > 0 ? probed : 1;
   const lengthOf = (ranges: TimeRange[]) => ranges.reduce((n, r) => n + r.endSec - r.startSec, 0);
 
@@ -448,7 +456,7 @@ async function main(): Promise<void> {
     try {
       const lang = selectLang.value;
       const result = await CaptionEngine.transcribeWithLocalWhisper({
-        blob: currentBlob,
+        blob: await loadTakeBlob(),
         language: lang,
         model: lang === 'en' ? 'Xenova/whisper-tiny.en' : 'Xenova/whisper-base',
         onProgress: ({ status }) => {
@@ -719,7 +727,6 @@ async function main(): Promise<void> {
         video.pause();
         video.removeAttribute('src');
         video.load();
-        if (activeUrl) URL.revokeObjectURL(activeUrl);
         window.close();
       } else {
         resetTrash();
