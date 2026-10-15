@@ -19,12 +19,19 @@ if (!preg_match(CLIPDESK_DEVICE_PATTERN, $deviceId)) {
 $hwid = (string)($in['hwid'] ?? '');
 $hwHash = preg_match('/^[a-f0-9]{64}$/', $hwid) ? subject_hash('hw:' . $hwid) : null;
 
-const TRIAL_DISPOSABLE = [
-    'mailinator.com', 'guerrillamail.com', 'guerrillamail.net', '10minutemail.com', 'tempmail.com',
-    'temp-mail.org', 'throwawaymail.com', 'yopmail.com', 'sharklasers.com', 'getnada.com',
-    'trashmail.com', 'maildrop.cc', 'dispostable.com', 'fakeinbox.com', 'mintemail.com',
-    'mohmal.com', 'emailondeck.com', 'tempail.com', 'burnermail.io', 'moakt.com',
-];
+/** True if the domain (or a parent of it) is on the bundled disposable-email list (lib/disposable_domains.txt). */
+function is_disposable_domain(string $domain): bool
+{
+    static $set = null;
+    $set ??= array_flip(array_filter(array_map('trim', file(__DIR__ . '/lib/disposable_domains.txt') ?: [])));
+    $parts = explode('.', $domain);
+    for ($i = 0; $i < count($parts) - 1; $i++) {
+        if (isset($set[implode('.', array_slice($parts, $i))])) {
+            return true;
+        }
+    }
+    return false;
+}
 
 /** Lowercases and strips +tags (and Gmail dots) so aliases of one mailbox count once. Null if unusable. */
 function normalize_trial_email(string $email): ?string
@@ -34,7 +41,7 @@ function normalize_trial_email(string $email): ?string
         return null;
     }
     [$local, $domain] = explode('@', $email, 2);
-    if (in_array($domain, TRIAL_DISPOSABLE, true)) {
+    if (is_disposable_domain($domain)) {
         return null;
     }
     $local = explode('+', $local, 2)[0];
@@ -76,7 +83,7 @@ if ($existing !== false) {
 
 $email = normalize_trial_email((string)($in['email'] ?? ''));
 if ($email === null) {
-    json_out(['error' => 'invalid_email', 'message' => 'Enter a real email address. Disposable addresses are not accepted.'], 400);
+    json_out(['error' => 'invalid_email', 'message' => 'Enter a real email address. Temporary or disposable email addresses are not accepted.'], 400);
 }
 $emailHash = subject_hash($email);
 
