@@ -27,9 +27,10 @@ certs/
 # Licensing server secrets (copy server/config.example.php)
 server/config.php
 
-# Large distribution binaries in public/downloads (keep zip, ignore heavy installers)
+# Distribution binaries are build output: publish them as GitHub release assets or upload them to the server
 public/downloads/*.exe
 public/downloads/*.msi
+public/downloads/*.zip
 
 # Editor / IDE / Agent local data
 .claude/

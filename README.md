@@ -15,7 +15,7 @@ Turn widescreen (16:9) desktop and browser recordings into viral, studio-grade 9
 [![Chrome MV3](https://img.shields.io/badge/Chrome_Extension-MV3-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white)](https://developer.chrome.com/docs/extensions/)
 [![FFmpeg](https://img.shields.io/badge/FFmpeg-Wasm%20%2B%20Static-007808?style=for-the-badge&logo=ffmpeg&logoColor=white)](https://ffmpeg.org)
 [![Tailwind 4](https://img.shields.io/badge/TailwindCSS-v4.3-38bdf8?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
-[![Privacy First](https://img.shields.io/badge/Privacy-100%25%20On--Device-success?style=for-the-badge&logo=shield)](https://github.com)
+[![Privacy First](https://img.shields.io/badge/Privacy-Local--first-success?style=for-the-badge&logo=shield)](https://github.com)
 
 <br/>
 

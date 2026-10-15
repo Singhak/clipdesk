@@ -16,6 +16,13 @@ jobs:
           cache: npm
       # --ignore-scripts: uiohook-napi ships prebuilt binaries; nothing here needs a native rebuild
       - run: npm ci --ignore-scripts
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+      # Syntax-check the licensing server: nothing else here executes PHP
+      - name: Lint PHP
+        shell: bash
+        run: find server -name '*.php' -not -path 'server/lib/phpmailer/*' -print0 | xargs -0 -n1 php -l
       - run: npm run typecheck
       - run: npm test
       - run: npx vite build
