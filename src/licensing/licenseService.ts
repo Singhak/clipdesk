@@ -119,8 +119,15 @@ export class LicenseService {
     return { success: true, message: '🎉 Pro activated. The watermark and recording limit are gone.' };
   }
 
-  public static async startTrial(): Promise<LicenseResult> {
-    const res = await this.call('trial.php', { deviceId: this.getDeviceId() });
+  /** Step 1 of the trial: emails a 6-digit code. Disposable addresses and reused emails are refused by the server. */
+  public static async requestTrialCode(email: string): Promise<LicenseResult> {
+    const res = await this.call('trial.php', { action: 'request', deviceId: this.getDeviceId(), email: email.trim() });
+    return res.success ? { success: true, message: `We emailed a 6-digit code to ${email.trim()}. It is valid for 15 minutes.` } : res;
+  }
+
+  /** Step 2: checks the emailed code and starts the trial on this device. */
+  public static async verifyTrial(email: string, code: string): Promise<LicenseResult> {
+    const res = await this.call('trial.php', { action: 'verify', deviceId: this.getDeviceId(), email: email.trim(), code: code.trim() });
     if (!res.success || !res.token) return res;
     if (!verifyToken(res.token, this.publicKey, this.getDeviceId())) {
       return { success: false, message: 'The licensing server sent a token this build cannot verify. Update ClipDesk.' };

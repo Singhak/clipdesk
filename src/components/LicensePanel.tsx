@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { LicenseInfo } from '../core/types';
 import { LicenseService } from '../licensing/licenseService';
 import { ConfirmDialog } from './Modal';
+import { TrialForm } from './TrialForm';
 import { getTierConfig } from '../licensing/tierFeatures';
 
 // Compact license section for the desktop launcher and the extension popup.
@@ -116,13 +117,10 @@ export const LicensePanel: React.FC<LicensePanelProps> = ({ openUrl }) => {
         <button onClick={() => openUrl(LicenseService.getCheckoutUrl('monthly'))} className="text-indigo-300 hover:text-indigo-200 cursor-pointer">
           30-day pass
         </button>
-        <button
-          disabled={busy}
-          onClick={() => void run(() => LicenseService.startTrial())}
-          className="ml-auto text-slate-400 hover:text-white disabled:opacity-50 cursor-pointer"
-        >
-          7-day trial
-        </button>
+        <TrialForm
+          onDone={(res) => setMessage({ text: res.message, isError: false })}
+          className="ml-auto text-slate-400 hover:text-white cursor-pointer"
+        />
       </div>
       {message && <p role="status" className={`text-xs ${message.isError ? 'text-rose-300' : 'text-emerald-300'}`}>{message.text}</p>}
     </section>

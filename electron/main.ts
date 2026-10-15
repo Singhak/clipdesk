@@ -16,7 +16,9 @@ import {
   systemPreferences,
   Tray
 } from 'electron';
-import { spawn, ChildProcess } from 'node:child_process';
+import { spawn, execFile, ChildProcess } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import fs from 'node:fs/promises';
@@ -46,6 +48,23 @@ import { checkNow, initUpdater, installNow, updateStatus } from './updater';
 import { LICENSE_API_BASE } from '../src/licensing/publicKey';
 
 const LICENSE_ENDPOINTS = ['activate.php', 'deactivate.php', 'trial.php'];
+
+// Hashed machine ID sent with trial requests so clearing app data does not give a second trial.
+let hwidPromise: Promise<string> | undefined;
+function machineHash(): Promise<string> {
+  hwidPromise ??= new Promise<string>((resolve) => {
+    const done = (raw: string) => resolve(createHash('sha256').update(`clipdesk:${raw}`).digest('hex'));
+    if (process.platform === 'win32') {
+      execFile('reg', ['query', 'HKLM\\SOFTWARE\\Microsoft\\Cryptography', '/v', 'MachineGuid'], { windowsHide: true }, (err, out) => {
+        const guid = /MachineGuid\s+REG_SZ\s+(\S+)/.exec(out)?.[1];
+        done(!err && guid ? guid : `${os.hostname()}|${os.userInfo().username}`);
+      });
+    } else {
+      done(`${os.hostname()}|${os.userInfo().username}`);
+    }
+  });
+  return hwidPromise;
+}
 
 /** Console output is lost in the installed app, so problems also go to the diagnostics log */
 function report(level: 'warn' | 'error', message: string, e: unknown): void {
@@ -880,10 +899,12 @@ function registerIpc(): void {
   ipcMain.on('state:reset-error', () => setState({ error: undefined }));
   ipcMain.handle('license:request', async (_e, req: { endpoint: string; body: Record<string, unknown> }) => {
     if (!LICENSE_ENDPOINTS.includes(req?.endpoint)) throw new Error('unknown license endpoint');
+    const body: Record<string, unknown> = { ...(req.body ?? {}) };
+    if (req.endpoint === 'trial.php') body.hwid = await machineHash();
     const res = await net.fetch(`${LICENSE_API_BASE}/${req.endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req.body ?? {})
+      body: JSON.stringify(body)
     });
     return { status: res.status, data: await res.json().catch(() => ({})) };
   });

@@ -3,6 +3,7 @@ import { X, Check, Crown, Sparkles, Key, CreditCard, Shield, ExternalLink, Lapto
 import { LicenseInfo } from '../core/types';
 import { Modal, ConfirmDialog } from './Modal';
 import { LicenseService } from '../licensing/licenseService';
+import { TrialForm } from './TrialForm';
 import { DISPLAY_PRICES, getTierConfig } from '../licensing/tierFeatures';
 
 interface UpgradeModalProps {
@@ -223,16 +224,16 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, lic
                   {busy ? 'Checking…' : 'Activate Key'}
                 </button>
                 {!isPro && (
-                  <button
-                    id="btn-start-trial"
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void run(() => LicenseService.startTrial(), true)}
-                    className="px-3 py-2 text-xs font-semibold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 disabled:opacity-50 rounded-lg transition-all shrink-0 cursor-pointer"
-                    title="Full Pro on this device for 7 days"
-                  >
-                    7-Day Free Trial
-                  </button>
+                  <TrialForm
+                    onDone={(res) => {
+                      setMessage({ text: res.message, isError: false });
+                      setTimeout(() => {
+                        onClose();
+                        setMessage(null);
+                      }, 1600);
+                    }}
+                    className="px-3 py-2 text-xs font-semibold text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-lg transition-all shrink-0 cursor-pointer"
+                  />
                 )}
               </form>
             </div>

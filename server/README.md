@@ -25,7 +25,7 @@ It needs:
 | `activate.php` | `POST {key, deviceId}` → `{token}` |
 | `deactivate.php` | `POST {key, deviceId}` frees a device slot |
 | `resend.php` | "Lost my key" page: emails a customer's active keys to their own address |
-| `trial.php` | `POST {deviceId}` → 7-day trial token, one per device |
+| `trial.php` | `POST {action: request\|verify\|resume, deviceId, email, code}` → emailed 6-digit code, then a 7-day trial token. One trial per email (aliases and disposable domains normalized or refused) and, in the desktop app, per machine (`hwid`, added by the main process) |
 
 Plans:
 - `monthly` is a one-time 30-day pass. Buying it again with the key in the "renewing" field adds 30 days to that key.
@@ -40,7 +40,7 @@ Plans:
 
    Don't mix the two: `schema.sql` is just the migrations concatenated, so importing it into a migrated database fails on the `ALTER`s.
 
-   Tables: `licenses`, `activations`, `trials` (licensing); `orders`, `payments` (one row per Cashfree attempt), `webhook_events` (raw webhook log, replay-safe); `license_events` (issued / renewed / revoked / activated / deactivated audit trail).
+   Tables: `licenses`, `activations`, `trials`, `trial_pending` (licensing; migration 004); `orders`, `payments` (one row per Cashfree attempt), `webhook_events` (raw webhook log, replay-safe); `license_events` (issued / renewed / revoked / activated / deactivated audit trail).
    To change the schema, add a new `migrations/NNN_name.sql`, then regenerate `schema.sql`: `cat migrations/*.sql` with the two header lines.
 2. **Upload.** Upload this folder's contents to `public_html/api/`. The `.htaccess` files block `lib/`, `bin/`, `config.php` and `schema.sql`.
 3. **Config.** Copy `config.example.php` to `clipdesk-config.php` in your home folder, one level above `public_html` (or set the `CLIPDESK_CONFIG` env var to its path). If your host won't allow that, use `server/config.php` instead. Fill in:
