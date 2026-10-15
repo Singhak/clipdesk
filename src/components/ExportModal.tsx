@@ -302,6 +302,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({
                   onTimeUpdate={(e) => setCurrentVideoTime(e.currentTarget.currentTime)}
                   onLoadedMetadata={(e) => {
                     const v = e.currentTarget;
+                    ExportEngine.ensureSeekable(v);
                     if (v.videoWidth && v.videoHeight) setVideoSize({ w: v.videoWidth, h: v.videoHeight });
                   }}
                   className="w-full h-full object-cover"

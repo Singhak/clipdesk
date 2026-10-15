@@ -42,6 +42,7 @@ import {
 } from './shared';
 import { FFmpegManager } from './ffmpegManager';
 import { parseRanges, type TimeRange } from '../src/core/cutList';
+import { CAMERA_PRESETS } from '../src/core/types';
 import { DEFAULT_FOCUS, clampFocus, focusSize } from '../src/core/focusRegion';
 import { initDiagnostics, log, openDiagnosticsFolder } from './diagnostics';
 import { checkNow, initUpdater, installNow, updateStatus } from './updater';
@@ -260,9 +261,15 @@ function showCameraBubble(): void {
   }
   const size = CAMERA_SIZES[currentCameraSizeKey];
   const area = targetDisplay().workArea;
-  // Position in bottom-left by default, with generous padding above taskbar
-  const x = Math.round(area.x + 36);
-  const y = Math.round(area.y + area.height - size - 36);
+  // Bottom-left by default, with generous padding above taskbar; otherwise the spot picked in the launcher
+  const preset = config.cameraPosition ? CAMERA_PRESETS.find((p) => p.id === config.cameraPosition) : undefined;
+  const pad = 36;
+  const x = preset
+    ? Math.round(Math.max(area.x + pad, Math.min(area.x + area.width - size - pad, area.x + preset.pos.x * area.width - size / 2)))
+    : Math.round(area.x + pad);
+  const y = preset
+    ? Math.round(Math.max(area.y + pad, Math.min(area.y + area.height - size - pad, area.y + preset.pos.y * area.height - size / 2)))
+    : Math.round(area.y + area.height - size - pad);
 
   cameraBubble = overlayWindow({
     width: size,
@@ -1035,6 +1042,26 @@ function registerIpc(): void {
     const normX = Math.max(0.05, Math.min(0.95, (b.x + b.width / 2 - display.x) / display.width));
     const normY = Math.max(0.05, Math.min(0.95, (b.y + b.height / 2 - display.y) / display.height));
     recorder.webContents.send('recorder:webcam-pos', { x: normX, y: normY });
+  });
+
+  // One of the nine preset spots: (nx, ny) is where the bubble's center goes, as a share of the usable screen
+  ipcMain.on('camera:set-position', (_e, pos: { x: number; y: number }) => {
+    if (!cameraBubble || cameraBubble.isDestroyed()) return;
+    if (!Number.isFinite(pos?.x) || !Number.isFinite(pos?.y)) return;
+    const area = targetDisplay().workArea;
+    const b = cameraBubble.getBounds();
+    const nx = Math.round(area.x + Math.max(0, Math.min(1, pos.x)) * area.width - b.width / 2);
+    const ny = Math.round(area.y + Math.max(0, Math.min(1, pos.y)) * area.height - b.height / 2);
+    const x = Math.max(area.x, Math.min(area.x + area.width - b.width, nx));
+    const y = Math.max(area.y, Math.min(area.y + area.height - b.height, ny));
+    cameraBubble.setBounds({ x, y, width: b.width, height: b.height });
+
+    if (recorder && !recorder.isDestroyed()) {
+      const display = targetDisplay().bounds;
+      const normX = Math.max(0.05, Math.min(0.95, (x + b.width / 2 - display.x) / display.width));
+      const normY = Math.max(0.05, Math.min(0.95, (y + b.height / 2 - display.y) / display.height));
+      recorder.webContents.send('recorder:webcam-pos', { x: normX, y: normY });
+    }
   });
 
   ipcMain.on('camera:size', (_e, sizeKey: 'small' | 'medium' | 'large') => {

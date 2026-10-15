@@ -1,5 +1,5 @@
 import React from 'react';
-import { WebcamConfig } from '../core/types';
+import { WebcamConfig, CAMERA_PRESETS } from '../core/types';
 import { CAMERA_BACKGROUNDS, type CameraBackgroundId } from '../core/cameraBackground';
 
 interface Props {
@@ -7,6 +7,39 @@ interface Props {
   onUpdate: (updater: (prev: WebcamConfig) => WebcamConfig) => void;
   idPrefix: string;
 }
+
+/** A 3x3 grid to put the camera bubble in any of nine spots. Dragging on the preview still works too. */
+export const CameraPositionGrid: React.FC<Props> = ({ config, onUpdate, idPrefix }) => (
+  <div className="flex flex-col items-end gap-1">
+  <div role="group" aria-label="Camera position" className="grid grid-cols-3 gap-1 w-[7.5rem] bg-black/40 p-1 rounded-lg border border-white/5">
+    {CAMERA_PRESETS.map((preset) => {
+      const active = config.presetPosition === preset.id;
+      return (
+        <button
+          type="button"
+          key={preset.id}
+          id={`${idPrefix}-pos-${preset.id}`}
+          aria-pressed={active}
+          aria-label={preset.label}
+          title={preset.label}
+          onClick={() => onUpdate((prev) => ({ ...prev, position: preset.pos, presetPosition: preset.id }))}
+          className={`h-8 rounded text-sm font-bold transition-all cursor-pointer ${
+            active ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-white hover:bg-white/5'
+          }`}
+        >
+          {preset.arrow}
+        </button>
+      );
+    })}
+  </div>
+  <span
+    id={`${idPrefix}-pos-custom`}
+    className={`text-[11px] font-semibold ${config.presetPosition === 'custom' ? 'text-indigo-300' : 'text-slate-500'}`}
+  >
+    {config.presetPosition === 'custom' ? '✋ Custom position (dragged)' : 'Or drag the bubble anywhere'}
+  </span>
+  </div>
+);
 
 /** Shape (circle / square), free-size slider and background for the camera bubble. */
 export const BubbleStyleControls: React.FC<Props> = ({ config, onUpdate, idPrefix }) => {

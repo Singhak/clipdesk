@@ -48,6 +48,8 @@ export class CutTimeline {
   private selection: TimeRange | null = null;
   private dragAnchor: number | null = null;
   private dragMoved = false;
+  /** Dragging the playhead; it pauses playback meanwhile and resumes after */
+  private scrubbing: { resume: boolean } | null = null;
   private raf = 0;
 
   private readonly root: HTMLDivElement;
@@ -73,10 +75,13 @@ export class CutTimeline {
         <span class="text-[11px] text-slate-400" data-ref="summary"></span>
       </div>
       <div data-ref="track" class="relative h-11 w-full rounded-xl border border-white/10 bg-indigo-500/15 overflow-hidden cursor-crosshair touch-none"
-        title="Drag to select a part, then press Delete to cut it">
+        title="Drag to select a part, then press Delete to cut it. Drag the white playhead to scrub.">
         <div data-ref="layer" class="absolute inset-0"></div>
         <div data-ref="selection" hidden class="absolute top-0 bottom-0 bg-amber-400/30 border-x-2 border-amber-400 pointer-events-none"></div>
-        <div data-ref="playhead" class="absolute top-0 bottom-0 w-[2px] -ml-px bg-white shadow-[0_0_8px_rgba(255,255,255,0.9)] pointer-events-none"></div>
+        <div data-ref="playhead" data-playhead class="absolute top-0 bottom-0 w-4 -ml-2 z-10 cursor-ew-resize" title="Drag to scrub">
+          <div class="absolute left-1/2 top-0 bottom-0 w-[2px] -ml-px bg-white shadow-[0_0_8px_rgba(255,255,255,0.9)] pointer-events-none"></div>
+          <div class="absolute left-1/2 top-0 w-3 h-3 -ml-1.5 rounded-full bg-white shadow pointer-events-none"></div>
+        </div>
       </div>
       <div class="flex flex-wrap items-center justify-between gap-1.5">
         <div class="flex flex-wrap items-center gap-1.5">
@@ -246,11 +251,21 @@ export class CutTimeline {
   private onPointerDown = (e: PointerEvent) => {
     if (e.button !== 0 || (e.target as HTMLElement).closest('[data-restore]')) return;
     this.track.setPointerCapture(e.pointerId);
+    if ((e.target as HTMLElement).closest('[data-playhead]')) {
+      this.scrubbing = { resume: !this.video.paused };
+      this.video.pause();
+      this.seek(this.timeAt(e.clientX));
+      return;
+    }
     this.dragAnchor = this.timeAt(e.clientX);
     this.dragMoved = false;
   };
 
   private onPointerMove = (e: PointerEvent) => {
+    if (this.scrubbing) {
+      this.seek(this.timeAt(e.clientX));
+      return;
+    }
     if (this.dragAnchor === null) return;
     const t = this.timeAt(e.clientX);
     const px = (Math.abs(t - this.dragAnchor) / Math.max(0.001, this.duration)) * this.track.clientWidth;
@@ -261,6 +276,17 @@ export class CutTimeline {
   };
 
   private onPointerUp = (e: PointerEvent) => {
+    if (this.scrubbing) {
+      const { resume } = this.scrubbing;
+      this.scrubbing = null;
+      try {
+        this.track.releasePointerCapture(e.pointerId);
+      } catch {
+        // already released
+      }
+      if (resume) this.togglePlay();
+      return;
+    }
     if (this.dragAnchor === null) return;
     if (!this.dragMoved) {
       // A plain click moves the playhead and drops the selection
@@ -371,8 +397,15 @@ export class CutTimeline {
     this.buttons.redo!.disabled = !this.history.canRedo;
     this.buttons.reset!.disabled = n === 0;
     this.paintSelection();
+    this.leaveCut();
     this.paintPlayhead();
     this.options.onChange?.(this.cuts, this.kept);
+  }
+
+  /** After an edit, a playhead left inside a cut (e.g. the start was cut) moves to the next kept part */
+  private leaveCut(): void {
+    if (this.video.readyState < 1 || !cutContaining(this.cuts, this.video.currentTime)) return;
+    this.video.currentTime = playableTime(this.kept, this.video.currentTime) ?? this.kept[0]?.startSec ?? 0;
   }
 
   private paintSelection(): void {

@@ -64,6 +64,7 @@ const api = {
   camera: {
     moveBy: (delta: { x: number; y: number }) => ipcRenderer.send('camera:move-by', delta),
     syncPosition: () => ipcRenderer.send('camera:sync-position'),
+    setPosition: (pos: { x: number; y: number }) => ipcRenderer.send('camera:set-position', pos),
     setSize: (sizeKey: 'small' | 'medium' | 'large') => ipcRenderer.send('camera:size', sizeKey),
     setMirror: (mirror: boolean) => ipcRenderer.send('camera:mirror', mirror),
     close: () => ipcRenderer.send('control', 'toggleCamera')

@@ -310,11 +310,36 @@ export class ExportEngine {
 
       video.muted = true;
       video.preload = 'metadata';
-      video.onloadedmetadata = () => finish(Number.isFinite(video.duration) ? video.duration : null);
+      video.onloadedmetadata = () => {
+        if (Number.isFinite(video.duration)) {
+          finish(video.duration);
+          return;
+        }
+        // MediaRecorder WebM has no length in its header: seeking far past the end makes the browser find it
+        video.ontimeupdate = () => finish(Number.isFinite(video.duration) ? video.duration : null);
+        video.currentTime = 1e101;
+      };
       video.onerror = () => finish(null);
       timerId = window.setTimeout(() => finish(null), timeoutMs);
       video.src = url;
     });
+  }
+
+  /**
+   * Makes a just-recorded file seekable. MediaRecorder WebM reports an infinite length, and then
+   * jumping to another time (skipping a cut part, dragging the playhead) snaps back to the start.
+   * Seeking far past the end once makes the browser work out the real length; playback then returns to 0.
+   */
+  public static ensureSeekable(video: HTMLVideoElement): void {
+    if (Number.isFinite(video.duration)) return;
+    const wasPlaying = !video.paused;
+    const onFixed = () => {
+      video.removeEventListener('timeupdate', onFixed);
+      video.currentTime = 0;
+      if (wasPlaying) void video.play().catch(() => {});
+    };
+    video.addEventListener('timeupdate', onFixed);
+    video.currentTime = 1e101;
   }
 
   /**

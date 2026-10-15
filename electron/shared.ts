@@ -1,5 +1,5 @@
 import type { CameraBackgroundId } from '../src/core/cameraBackground';
-import type { TemplateId, NoiseSuppressionMode } from '../src/core/types';
+import type { TemplateId, NoiseSuppressionMode, CameraPresetId } from '../src/core/types';
 import type { TimeRange } from '../src/core/cutList';
 import type { FocusRegion } from '../src/core/focusRegion';
 
@@ -27,6 +27,8 @@ export interface DesktopConfig {
   wideMouseFx?: boolean;
   /** Blur or replace what is behind the person in the camera bubble */
   cameraBackground?: CameraBackgroundId;
+  /** Where the camera bubble starts, one of nine spots (default bottom left); it can still be dragged */
+  cameraPosition?: CameraPresetId;
   /** Vertical layouts: the view follows the mouse (default on) */
   followMouse?: boolean;
   /** Vertical layouts: zoom in where you click (default on) */

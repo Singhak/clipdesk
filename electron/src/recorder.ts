@@ -6,7 +6,7 @@ import { mixAudioTracks, MixedAudio } from '../../src/core/audioMixer';
 import { ExportEngine } from '../../src/core/exportEngine';
 import { LicenseService } from '../../src/licensing/licenseService';
 import { getExportBitrate, getTierConfig } from '../../src/licensing/tierFeatures';
-import { LayoutMode, SubscriptionTier, WebcamConfig, getLogicalSize, getOutputSize } from '../../src/core/types';
+import { CAMERA_PRESETS, LayoutMode, SubscriptionTier, WebcamConfig, getLogicalSize, getOutputSize } from '../../src/core/types';
 import { ControlAction, DesktopConfig, IDLE_STATE, PointerSample, RecState, elapsedMs } from '../shared';
 
 // Runs in a hidden window for the whole take: captures the chosen screen or window, composites the
@@ -258,6 +258,11 @@ async function main(): Promise<void> {
     }
   }
   webcamConfig.background = config.cameraBackground ?? 'none';
+  const startSpot = CAMERA_PRESETS.find((p) => p.id === config.cameraPosition);
+  if (startSpot) {
+    webcamConfig.position = startSpot.pos;
+    webcamConfig.presetPosition = startSpot.id;
+  }
   if (config.camera) webcamConfig.enabled = await startCamera();
 
   // Mic first: if the two can't be mixed, keep the voice-over.

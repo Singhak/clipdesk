@@ -40,7 +40,19 @@ function probeDuration(video: HTMLVideoElement, timeoutMs = 5000): Promise<numbe
       video.removeEventListener('error', onError);
       resolve(value);
     };
-    const onMeta = () => done(Number.isFinite(video.duration) ? video.duration : null);
+    const onMeta = () => {
+      if (Number.isFinite(video.duration)) return done(video.duration);
+      // WebM from MediaRecorder has no length in its header: seeking far past the end makes the browser find it
+      video.addEventListener(
+        'timeupdate',
+        () => {
+          video.currentTime = 0;
+          done(Number.isFinite(video.duration) ? video.duration : null);
+        },
+        { once: true }
+      );
+      video.currentTime = 1e101;
+    };
     const onError = () => done(null);
     const timer = window.setTimeout(() => done(null), timeoutMs);
     if (video.readyState >= 1) return onMeta();

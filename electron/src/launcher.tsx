@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import type { TemplateId } from '../../src/core/types';
 import { CAMERA_BACKGROUNDS, type CameraBackgroundId } from '../../src/core/cameraBackground';
+import { CAMERA_PRESETS } from '../../src/core/types';
 import { LicensePanel } from '../../src/components/LicensePanel';
 import { FocusPicker } from '../../src/components/FocusPicker';
 import { DEFAULT_FOCUS } from '../../src/core/focusRegion';
@@ -578,6 +579,31 @@ const Launcher: React.FC = () => {
 
       <section className="divide-y divide-white/5">
         <Toggle label="Camera bubble" checked={config.camera} onChange={(camera) => update({ camera })} />
+        {config.camera && (
+          <div className="flex items-center justify-between gap-3 py-2.5">
+            <span className="text-[12px] text-slate-300">Camera position</span>
+            <div role="group" aria-label="Camera position" className="grid grid-cols-3 gap-1 p-1 rounded-lg bg-white/5 border border-white/10">
+              {CAMERA_PRESETS.map((p) => {
+                const active = (config.cameraPosition ?? 'bottom_left') === p.id;
+                return (
+                  <button
+                    type="button"
+                    key={p.id}
+                    aria-pressed={active}
+                    aria-label={p.label}
+                    title={p.label}
+                    onClick={() => update({ cameraPosition: p.id })}
+                    className={`w-8 h-7 rounded text-[13px] font-bold cursor-pointer ${
+                      active ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    {p.arrow}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {config.camera && (
           <label className="flex items-center justify-between gap-3 py-2.5">
             <span className="text-[12px] text-slate-300">Camera background</span>

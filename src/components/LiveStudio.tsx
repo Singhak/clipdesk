@@ -24,7 +24,7 @@ import { CountdownOverlay } from './CountdownOverlay';
 import { FramingOverlay } from './FramingOverlay';
 import { FocusPicker } from './FocusPicker';
 import { DEFAULT_FOCUS, FocusRegion } from '../core/focusRegion';
-import { BubbleStyleControls } from './BubbleStyleControls';
+import { BubbleStyleControls, CameraPositionGrid } from './BubbleStyleControls';
 import { AudioMeter } from './AudioMeter';
 import { TemplateConfig, LayoutMode, SmartFeatures, LicenseInfo, ExportSettings, WebcamConfig } from '../core/types';
 import { ExportEngine } from '../core/exportEngine';
@@ -805,36 +805,10 @@ export const LiveStudio: React.FC<LiveStudioProps> = ({
 
                 <BubbleStyleControls config={webcamConfig} onUpdate={onUpdateWebcamConfig} idPrefix="studio-cam" />
 
-                {/* Corner Position Presets */}
+                {/* Position: nine spots */}
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-400 text-xs">Corner Position:</span>
-                  <div className="flex items-center gap-1">
-                    {[
-                      { id: 'bottom_right' as const, label: '↘ B-Right', pos: { x: 0.82, y: 0.85 } },
-                      { id: 'bottom_left' as const, label: '↙ B-Left', pos: { x: 0.18, y: 0.85 } },
-                      { id: 'top_right' as const, label: '↗ T-Right', pos: { x: 0.82, y: 0.15 } },
-                      { id: 'top_left' as const, label: '↖ T-Left', pos: { x: 0.18, y: 0.15 } }
-                    ].map((preset) => (
-                      <button
-                        key={preset.id}
-                        id={`btn-cam-preset-${preset.id}`}
-                        onClick={() =>
-                          onUpdateWebcamConfig((prev) => ({
-                            ...prev,
-                            position: preset.pos,
-                            presetPosition: preset.id
-                          }))
-                        }
-                        className={`px-2 py-0.5 rounded text-xs font-bold border transition-all cursor-pointer ${
-                          webcamConfig.presetPosition === preset.id
-                            ? 'bg-indigo-600/30 border-indigo-500 text-indigo-300'
-                            : 'bg-white/5 border-white/5 text-slate-400 hover:text-white'
-                        }`}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
+                  <span className="text-slate-400 text-xs">Position:</span>
+                  <CameraPositionGrid config={webcamConfig} onUpdate={onUpdateWebcamConfig} idPrefix="studio-cam" />
                 </div>
 
                 {/* Mirror selfie & drag hint */}

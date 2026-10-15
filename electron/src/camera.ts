@@ -110,6 +110,27 @@ if (bubbleCard) {
   bubbleCard.addEventListener('pointercancel', onPointerEnd);
 }
 
+// Position presets: the button swaps the toolbar for a 3x3 grid; dragging stays available for any custom spot
+const posGrid = document.getElementById('pos-grid');
+const toolRow = document.getElementById('tool-row');
+const showPosGrid = (open: boolean): void => {
+  if (posGrid) posGrid.hidden = !open;
+  if (toolRow) toolRow.hidden = open;
+};
+document.getElementById('btn-pos')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  showPosGrid(true);
+});
+posGrid?.querySelectorAll<HTMLButtonElement>('.pos-cell').forEach((cell) => {
+  cell.addEventListener('click', (e) => {
+    e.stopPropagation();
+    reel.camera.setPosition({ x: Number(cell.dataset.x), y: Number(cell.dataset.y) });
+    showPosGrid(false);
+  });
+});
+// Leaving the bubble puts the toolbar back, so the grid never stays open unseen
+bubbleCard?.addEventListener('pointerleave', () => showPosGrid(false));
+
 // Resize handler (Small 140 -> Medium 190 -> Large 250 -> Small)
 btnSize?.addEventListener('click', (e) => {
   e.stopPropagation();

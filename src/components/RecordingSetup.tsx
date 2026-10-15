@@ -22,7 +22,7 @@ import {
   ChevronUp
 } from 'lucide-react';
 import { InstagramIcon, YoutubeIcon } from './SocialIcons';
-import { BubbleStyleControls } from './BubbleStyleControls';
+import { BubbleStyleControls, CameraPositionGrid } from './BubbleStyleControls';
 import { AudioMeter } from './AudioMeter';
 import { RecordingSource, SmartFeatures, AudioConfig, NoiseSuppressionMode, TemplateId, LayoutMode, WebcamConfig } from '../core/types';
 import { TEMPLATES } from '../core/templateManager';
@@ -542,40 +542,12 @@ export const RecordingSetup: React.FC<RecordingSetupProps> = ({
 
                 <BubbleStyleControls config={webcamConfig} onUpdate={onUpdateWebcamConfig} idPrefix="setup-cam" />
 
-                {/* Starting Corner Preset */}
+                {/* Starting position: nine spots */}
                 <div>
                   <label className="text-slate-300 font-semibold text-xs block mb-1.5">
-                    Starting corner
+                    Starting position
                   </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {[
-                      { id: 'bottom_right' as const, label: '↘ Bottom-Right', pos: { x: 0.82, y: 0.85 } },
-                      { id: 'bottom_left' as const, label: '↙ Bottom-Left', pos: { x: 0.18, y: 0.85 } },
-                      { id: 'top_right' as const, label: '↗ Top-Right', pos: { x: 0.82, y: 0.15 } },
-                      { id: 'top_left' as const, label: '↖ Top-Left', pos: { x: 0.18, y: 0.15 } }
-                    ].map((preset) => (
-                      <button
-                        type="button"
-                        key={preset.id}
-                        id={`setup-cam-pos-${preset.id}`}
-                        aria-pressed={webcamConfig.presetPosition === preset.id}
-                        onClick={() =>
-                          onUpdateWebcamConfig((prev) => ({
-                            ...prev,
-                            position: preset.pos,
-                            presetPosition: preset.id
-                          }))
-                        }
-                        className={`py-2 px-2.5 rounded-xl border text-left font-semibold text-xs transition-all cursor-pointer ${
-                          webcamConfig.presetPosition === preset.id
-                            ? 'bg-indigo-600/30 border-indigo-500 text-indigo-200'
-                            : 'bg-black/40 border-white/5 text-slate-400 hover:text-white hover:bg-white/5'
-                        }`}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
+                  <CameraPositionGrid config={webcamConfig} onUpdate={onUpdateWebcamConfig} idPrefix="setup-cam" />
                 </div>
 
                 {/* Mirror Toggle */}

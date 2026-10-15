@@ -99,11 +99,36 @@ export interface ExportSettings {
   templateId: TemplateId;
 }
 
+/** The nine spots of the camera position grid */
+export type CameraPresetId =
+  | 'top_left'
+  | 'top_center'
+  | 'top_right'
+  | 'middle_left'
+  | 'center'
+  | 'middle_right'
+  | 'bottom_left'
+  | 'bottom_center'
+  | 'bottom_right';
+
+/** Row by row, top-left to bottom-right, so the list renders as a 3x3 grid */
+export const CAMERA_PRESETS: { id: CameraPresetId; label: string; arrow: string; pos: { x: number; y: number } }[] = [
+  { id: 'top_left', label: 'Top left', arrow: '↖', pos: { x: 0.18, y: 0.15 } },
+  { id: 'top_center', label: 'Top center', arrow: '↑', pos: { x: 0.5, y: 0.15 } },
+  { id: 'top_right', label: 'Top right', arrow: '↗', pos: { x: 0.82, y: 0.15 } },
+  { id: 'middle_left', label: 'Middle left', arrow: '←', pos: { x: 0.18, y: 0.5 } },
+  { id: 'center', label: 'Center', arrow: '●', pos: { x: 0.5, y: 0.5 } },
+  { id: 'middle_right', label: 'Middle right', arrow: '→', pos: { x: 0.82, y: 0.5 } },
+  { id: 'bottom_left', label: 'Bottom left', arrow: '↙', pos: { x: 0.18, y: 0.85 } },
+  { id: 'bottom_center', label: 'Bottom center', arrow: '↓', pos: { x: 0.5, y: 0.85 } },
+  { id: 'bottom_right', label: 'Bottom right', arrow: '↘', pos: { x: 0.82, y: 0.85 } }
+];
+
 export interface WebcamConfig {
   enabled: boolean;
   size: 'small' | 'medium' | 'large'; // radius: 55px, 75px, 100px
   position: { x: number; y: number }; // normalized coords (0..1)
-  presetPosition: 'bottom_right' | 'bottom_left' | 'top_right' | 'top_left' | 'custom';
+  presetPosition: CameraPresetId | 'custom';
   mirror?: boolean;
   shape?: 'circle' | 'square'; // default circle
   scale?: number; // multiplier on the preset size, 0.6 to 1.6, default 1
