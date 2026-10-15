@@ -95,7 +95,10 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
   const [activeTab, setActiveTab] = useState<'whisper' | 'speech' | 'type' | 'style'>('whisper');
 
   // --- 0. Whisper AI Transcription State ---
-  const [whisperApiKey, setWhisperApiKey] = useState(() => localStorage.getItem('clipdesk_whisper_key') || '');
+  const [whisperApiKey, setWhisperApiKey] = useState(() => {
+    try { localStorage.removeItem('clipdesk_whisper_key'); } catch { /* legacy plaintext key, no longer persisted */ }
+    return sessionStorage.getItem('clipdesk_whisper_key') || '';
+  });
   const [whisperProvider, setWhisperProvider] = useState<'local' | 'groq' | 'openai'>(
     () => (localStorage.getItem('clipdesk_whisper_provider') as 'local' | 'groq' | 'openai') || 'local'
   );
@@ -323,7 +326,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
       );
       return;
     }
-    localStorage.setItem('clipdesk_whisper_key', key);
+    sessionStorage.setItem('clipdesk_whisper_key', key);
     localStorage.setItem('clipdesk_whisper_provider', whisperProvider);
 
     setIsTranscribing(true);
@@ -895,7 +898,7 @@ export const CaptionsGenerator: React.FC<CaptionsGeneratorProps> = ({
                       className="w-full bg-black/60 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 font-mono"
                     />
                     <p className="text-xs text-slate-400">
-                      Stored in this browser only. When you transcribe, the key and your audio are sent
+                      Kept for this tab only and forgotten when you close it. When you transcribe, the key and your audio are sent
                       directly to {whisperProvider === 'groq' ? 'Groq' : 'OpenAI'}, not to ClipDesk.
                     </p>
                   </div>

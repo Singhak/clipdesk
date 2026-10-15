@@ -36,6 +36,12 @@ if ($stmt->fetch()) {
     $stmt = $pdo->prepare('SELECT COUNT(*) FROM activations WHERE license_key = ?');
     $stmt->execute([$key]);
     if ((int)$stmt->fetchColumn() >= (int)$license['max_devices']) {
+        // Free slots from devices not seen for 90 days (reinstalls, cleared storage) before refusing.
+        $pdo->prepare('DELETE FROM activations WHERE license_key = ? AND last_seen < ?')
+            ->execute([$key, gmdate('Y-m-d H:i:s', time() - 90 * 86400)]);
+        $stmt->execute([$key]);
+    }
+    if ((int)$stmt->fetchColumn() >= (int)$license['max_devices']) {
         json_out([
             'error' => 'device_limit',
             'message' => 'This key is already active on ' . (int)$license['max_devices'] . ' devices. Deactivate one of them first.',
